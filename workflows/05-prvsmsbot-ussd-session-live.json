@@ -1,0 +1,454 @@
+{
+  "name": "PRVSMSBOT - USSD Session + Live",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "prvsmsbot/ussd/session",
+        "httpMethod": "POST",
+        "responseMode": "responseNode"
+      },
+      "id": "w5-webhook",
+      "name": "USSD Session Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [160, 360],
+      "webhookId": "prvsmsbot-ussd-session"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $getWorkflowStaticData('global');\nconst headers = $json.headers || {};\nconst body = $json.body || $json;\nconst provided = String(headers['x-prv-bot-token'] || headers['X-Prv-Bot-Token'] || '').trim();\nconst expected = String($env.PRV_BOT_TOKEN || '').trim();\nif (!expected) {\n  return [{ json: { ok: false, status_code: 500, error: 'missing PRV_BOT_TOKEN in n8n env', mode: 'error' } }];\n}\nif (provided !== expected) {\n  return [{ json: { ok: false, status_code: 401, error: 'unauthorized', mode: 'error' } }];\n}\n\nconst hasSteps = Array.isArray(body.steps);\nconst hasAction = typeof body.action === 'string' && body.action.trim().length > 0;\n\nif (hasSteps) {\n  const steps = body.steps.map(s => String(s).trim()).filter(Boolean);\n  if (!steps.length) {\n    return [{ json: { ok: false, status_code: 400, error: 'requires non-empty steps list', mode: 'error' } }];\n  }\n  return [{ json: { ok: true, mode: 'batch', steps } }];\n}\n\nif (hasAction) {\n  const action = String(body.action || '').trim().toLowerCase();\n  const chatId = String(body.chat_id || '').trim();\n  const value = String(body.value || '').trim();\n  if (!chatId) {\n    return [{ json: { ok: false, status_code: 400, error: 'chat_id required for live actions', mode: 'error' } }];\n  }\n  if (!['start','reply','cancel'].includes(action)) {\n    return [{ json: { ok: false, status_code: 400, error: 'action must be start|reply|cancel', mode: 'error' } }];\n  }\n  if ((action === 'start' || action === 'reply') && !value) {\n    return [{ json: { ok: false, status_code: 400, error: 'value required for start/reply', mode: 'error' } }];\n  }\n  if (!data.ussdSessions) data.ussdSessions = {};\n  const state = data.ussdSessions[chatId] || { active: false, history: [] };\n  return [{ json: { ok: true, mode: 'live', action, chat_id: chatId, value, state } }];\n}\n\nreturn [{ json: { ok: false, status_code: 400, error: 'requires either steps[] or action', mode: 'error' } }];"
+      },
+      "id": "w5-validate",
+      "name": "Validate + Route Mode",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [400, 360]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "w5-cond-ok",
+              "leftValue": "={{String($json.ok)}}",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "w5-if-ok",
+      "name": "Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [640, 360]
+    },
+    {
+      "parameters": {
+        "switch": {
+          "cases": [
+            {
+              "conditions": [
+                {
+                  "leftValue": "={{$json.mode}}",
+                  "rightValue": "batch",
+                  "operator": {
+                    "type": "string",
+                    "operation": "equals"
+                  }
+                }
+              ]
+            },
+            {
+              "conditions": [
+                {
+                  "leftValue": "={{$json.mode}}",
+                  "rightValue": "live",
+                  "operator": {
+                    "type": "string",
+                    "operation": "equals"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "w5-switch-mode",
+      "name": "Batch or Live",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [900, 260]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{($env.SMSGATE_BASE_URL || 'http://smsgate:5000') + '/ussd/session'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Admin-Key",
+              "value": "={{$env.SMSGATE_ADMIN_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"steps\": $json.steps}",
+        "options": {
+          "timeout": 90000
+        }
+      },
+      "id": "w5-run-batch",
+      "name": "Run Batch Session",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1150, 120]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "w5-respond-batch",
+      "name": "Respond Batch",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.2,
+      "position": [1390, 120]
+    },
+    {
+      "parameters": {
+        "switch": {
+          "cases": [
+            {
+              "conditions": [
+                {
+                  "leftValue": "={{$json.action}}",
+                  "rightValue": "start",
+                  "operator": {
+                    "type": "string",
+                    "operation": "equals"
+                  }
+                }
+              ]
+            },
+            {
+              "conditions": [
+                {
+                  "leftValue": "={{$json.action}}",
+                  "rightValue": "reply",
+                  "operator": {
+                    "type": "string",
+                    "operation": "equals"
+                  }
+                }
+              ]
+            },
+            {
+              "conditions": [
+                {
+                  "leftValue": "={{$json.action}}",
+                  "rightValue": "cancel",
+                  "operator": {
+                    "type": "string",
+                    "operation": "equals"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "id": "w5-switch-action",
+      "name": "Action Switch",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [1150, 420]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{($env.SMSGATE_BASE_URL || 'http://smsgate:5000') + '/ussd/send'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Admin-Key",
+              "value": "={{$env.SMSGATE_ADMIN_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"code\": $json.value}",
+        "options": {
+          "timeout": 45000
+        }
+      },
+      "id": "w5-live-start-call",
+      "name": "Live Start -> USSD Send",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1410, 280]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $getWorkflowStaticData('global');\nif (!data.ussdSessions) data.ussdSessions = {};\nconst input = $input.first().json || {};\nconst root = $('Validate + Route Mode').first().json || {};\nconst chatId = String(root.chat_id || '');\nconst state = { active: true, history: [] };\nconst menu = String(input.response || input.error || '');\nstate.history.push({ step: 1, input: String(root.value || ''), response: menu });\ndata.ussdSessions[chatId] = state;\nreturn [{ json: { status: 'active', chat_id: chatId, menu, history: state.history } }];"
+      },
+      "id": "w5-live-start-store",
+      "name": "Store Live Start State",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1650, 280]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{($env.SMSGATE_BASE_URL || 'http://smsgate:5000') + '/ussd/send'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Admin-Key",
+              "value": "={{$env.SMSGATE_ADMIN_KEY}}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\"code\": $json.value}",
+        "options": {
+          "timeout": 45000
+        }
+      },
+      "id": "w5-live-reply-call",
+      "name": "Live Reply -> USSD Send",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1410, 420]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $getWorkflowStaticData('global');\nif (!data.ussdSessions) data.ussdSessions = {};\nconst input = $input.first().json || {};\nconst root = $('Validate + Route Mode').first().json || {};\nconst chatId = String(root.chat_id || '');\nconst state = data.ussdSessions[chatId] || { active: false, history: [] };\nif (!state.active) {\n  return [{ json: { status: 'idle', chat_id: chatId, error: 'no active live session; use start first' } }];\n}\nconst menu = String(input.response || input.error || '');\nconst nextStep = (state.history?.length || 0) + 1;\nstate.history = state.history || [];\nstate.history.push({ step: nextStep, input: String(root.value || ''), response: menu });\ndata.ussdSessions[chatId] = state;\nreturn [{ json: { status: 'active', chat_id: chatId, menu, history: state.history } }];"
+      },
+      "id": "w5-live-reply-store",
+      "name": "Store Live Reply State",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1650, 420]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $getWorkflowStaticData('global');\nif (!data.ussdSessions) data.ussdSessions = {};\nconst root = $('Validate + Route Mode').first().json || {};\nconst chatId = String(root.chat_id || '');\nconst state = data.ussdSessions[chatId] || { active: false, history: [] };\nstate.active = false;\ndata.ussdSessions[chatId] = state;\nreturn [{ json: { status: 'cancelled', chat_id: chatId, history: state.history || [] } }];"
+      },
+      "id": "w5-live-cancel",
+      "name": "Cancel Live Session",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1410, 560]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "w5-respond-live",
+      "name": "Respond Live",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.2,
+      "position": [1900, 420]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}",
+        "options": {
+          "responseCode": "={{$json.status_code || 400}}"
+        }
+      },
+      "id": "w5-respond-err",
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.2,
+      "position": [900, 560]
+    }
+  ],
+  "connections": {
+    "USSD Session Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate + Route Mode",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate + Route Mode": {
+      "main": [
+        [
+          {
+            "node": "Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid?": {
+      "main": [
+        [
+          {
+            "node": "Batch or Live",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Batch or Live": {
+      "main": [
+        [
+          {
+            "node": "Run Batch Session",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Action Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Batch Session": {
+      "main": [
+        [
+          {
+            "node": "Respond Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Action Switch": {
+      "main": [
+        [
+          {
+            "node": "Live Start -> USSD Send",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Live Reply -> USSD Send",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cancel Live Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Live Start -> USSD Send": {
+      "main": [
+        [
+          {
+            "node": "Store Live Start State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Live Start State": {
+      "main": [
+        [
+          {
+            "node": "Respond Live",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Live Reply -> USSD Send": {
+      "main": [
+        [
+          {
+            "node": "Store Live Reply State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Live Reply State": {
+      "main": [
+        [
+          {
+            "node": "Respond Live",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cancel Live Session": {
+      "main": [
+        [
+          {
+            "node": "Respond Live",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

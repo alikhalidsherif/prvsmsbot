@@ -1,0 +1,159 @@
+{
+  "name": "PRVSMSBOT - Inbox",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "prvsmsbot/inbox",
+        "httpMethod": "POST",
+        "responseMode": "responseNode"
+      },
+      "id": "w2-webhook",
+      "name": "Inbox Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [220, 320],
+      "webhookId": "prvsmsbot-inbox"
+    },
+    {
+      "parameters": {
+        "jsCode": "const headers = $json.headers || {};\nconst body = $json.body || $json;\nconst provided = String(headers['x-prv-bot-token'] || headers['X-Prv-Bot-Token'] || '').trim();\nconst expected = String($env.PRV_BOT_TOKEN || '').trim();\nif (!expected) {\n  return [{ json: { ok: false, status_code: 500, error: 'missing PRV_BOT_TOKEN in n8n env' } }];\n}\nif (provided !== expected) {\n  return [{ json: { ok: false, status_code: 401, error: 'unauthorized' } }];\n}\nconst page = Math.max(1, Number(body.page || 1));\nconst limit = Math.min(200, Math.max(5, Number(body.limit || 20)));\nconst phone = String(body.phone || '').trim();\nconst search = String(body.search || '').trim();\nconst type = String(body.type || 'sms').trim();\nreturn [{ json: { ok: true, page, limit, phone, search, type } }];"
+      },
+      "id": "w2-validate",
+      "name": "Validate Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [470, 320]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "w2-cond-valid",
+              "leftValue": "={{String($json[\"ok\"])}}",
+              "rightValue": "true",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      },
+      "id": "w2-if-valid",
+      "name": "Request Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [700, 320]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{($env.SMSGATE_BASE_URL || 'http://smsgate:5000') + '/sms/history?page=' + $json.page + '&limit=' + $json.limit + ($json.phone ? '&phone=' + encodeURIComponent($json.phone) : '') + ($json.search ? '&search=' + encodeURIComponent($json.search) : '') + ($json.type ? '&type=' + encodeURIComponent($json.type) : '')}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Admin-Key",
+              "value": "={{$env.SMSGATE_ADMIN_KEY}}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "id": "w2-history",
+      "name": "Fetch SMS History",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [940, 220]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "w2-respond-ok",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.2,
+      "position": [1180, 220]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{$json}}",
+        "options": {
+          "responseCode": "={{$json.status_code || 400}}"
+        }
+      },
+      "id": "w2-respond-err",
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.2,
+      "position": [940, 420]
+    }
+  ],
+  "connections": {
+    "Inbox Webhook": {
+      "main": [
+        [
+          {
+            "node": "Validate Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Request": {
+      "main": [
+        [
+          {
+            "node": "Request Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Request Valid?": {
+      "main": [
+        [
+          {
+            "node": "Fetch SMS History",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch SMS History": {
+      "main": [
+        [
+          {
+            "node": "Respond OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
