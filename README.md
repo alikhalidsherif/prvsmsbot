@@ -22,6 +22,8 @@ Example generation:
 
 Yes, incoming SMS notifications are supported. This project now includes a webhook listener in the bot that can push new SMS alerts directly to allowed users, so no need to poll `/inbox` manually.
 
+Delivery report notifications are also supported and enabled by default (`NOTIFY_DELIVERY_REPORTS=true`).
+
 ## 0. Purpose (One sentence)
 
 Provide a Telegram-first control plane for SMS and USSD operations using modular n8n workflows as stable interfaces.
@@ -212,6 +214,7 @@ Health check:
 - `workflows/07-prvsmsbot-smsgate-webhook-config.json`
 
 See detailed n8n wiring in `docs/N8N_SETUP.md`.
+See env reference in `docs/ENV_FIX_SAMPLE.md`.
 
 ## Security Notes
 
@@ -220,6 +223,26 @@ See detailed n8n wiring in `docs/N8N_SETUP.md`.
 - Rotate tokens if accidentally exposed.
 - Restrict Telegram usage with `ALLOWED_TELEGRAM_USER_IDS`.
 - This bot enforces private-chat-only commands and allows only configured Telegram user IDs.
+
+## Env Check For Your Current File
+
+Your current `.env` values are mostly correct for tokens and allowed IDs.
+
+Important fixes needed:
+
+- Remove deprecated keys:
+  - `PRV_BOT_HOST`
+  - `PRV_BOT_PORT`
+- Add required webhook listener keys:
+  - `WEBHOOK_HOST=0.0.0.0`
+  - `WEBHOOK_PORT=8090`
+- Add delivery report control:
+  - `NOTIFY_DELIVERY_REPORTS=true`
+- If bot runs in Docker and n8n runs in Docker, update:
+  - `N8N_WEBHOOK_BASE_URL=http://n8n:5678/webhook`
+  - `http://localhost:5678/webhook` will not work from inside container unless you intentionally route it.
+
+For safety, rotate your Telegram bot token now because it was exposed in plaintext in the file you shared.
 
 ## Your Allowed Users
 

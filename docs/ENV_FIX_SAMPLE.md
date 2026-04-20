@@ -1,20 +1,19 @@
-# Telegram
-TELEGRAM_BOT_TOKEN=CHANGE_ME_TELEGRAM_BOT_TOKEN
+# Suggested `.env` Shape
+
+Use this as a practical reference (values are placeholders):
+
+```env
+TELEGRAM_BOT_TOKEN=REPLACE_ME
 ALLOWED_TELEGRAM_USER_IDS=8338441637,943629543
 
-# Shared secret for Python -> n8n calls
-PRV_BOT_TOKEN=CHANGE_ME_PRV_BOT_TOKEN
+PRV_BOT_TOKEN=REPLACE_WITH_RANDOM_SECRET
 
-# Local webhook listener for SMSGate push notifications
 WEBHOOK_HOST=0.0.0.0
 WEBHOOK_PORT=8090
 NOTIFY_DELIVERY_REPORTS=true
+PRVSMSBOT_SMSGATE_WEBHOOK_URL=http://prvsmsbot:8090/webhook/smsgate?token=REPLACE_WITH_RANDOM_SECRET
 
-# n8n should set SMSGate webhook_url to this target
-PRVSMSBOT_SMSGATE_WEBHOOK_URL=http://prvsmsbot:8090/webhook/smsgate?token=CHANGE_ME_PRV_BOT_TOKEN
-
-# n8n webhook base and endpoint paths
-N8N_WEBHOOK_BASE_URL=http://localhost:5678/webhook
+N8N_WEBHOOK_BASE_URL=http://n8n:5678/webhook
 N8N_SEND_SMS_PATH=prvsmsbot/send-sms
 N8N_INBOX_PATH=prvsmsbot/inbox
 N8N_OUTBOX_PATH=prvsmsbot/outbox
@@ -24,7 +23,7 @@ N8N_USSD_LIVE_PATH=prvsmsbot/ussd/session
 N8N_HEALTH_PATH=prvsmsbot/health
 N8N_TIMEOUT_SECONDS=25
 
-# Category tuning for inbox grouping
 SERVICE_SENDER_PATTERNS=127,251,Ethio,telebirr,CBE,Awash,Dashen,BOA,bank,otp,code
 PERSONAL_SENDER_MIN_DIGITS=10
 DEFAULT_PAGE_LIMIT=20
+```

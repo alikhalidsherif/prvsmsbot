@@ -42,6 +42,21 @@ Import all files in `workflows/`:
 
 Then activate them.
 
+Do you need all 7 files?
+
+- Recommended: yes, import all 7 for complete feature coverage.
+- Minimum operational set for core commands:
+  - `01`, `02`, `03`, `04`, `05`, `06`
+- File `07` is specifically for auto-configuring SMSGate `webhook_url` for push notifications.
+
+Could this be one workflow?
+
+- Technically yes.
+- Practically, split workflows are better here because:
+  - easier debugging and rollback per feature,
+  - safer edits without breaking unrelated paths,
+  - clearer ownership of each contract endpoint.
+
 ## Webhook Paths
 
 Configured defaults (from `.env.example`):

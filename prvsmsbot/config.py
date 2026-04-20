@@ -14,6 +14,18 @@ def _parse_int(name: str, default: int) -> int:
         return default
 
 
+def _parse_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    value = raw.strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
 def _parse_csv(name: str, default: str) -> tuple[str, ...]:
     raw = os.getenv(name, default)
     values = [part.strip() for part in raw.split(",") if part.strip()]
@@ -42,6 +54,7 @@ class Settings:
     allowed_telegram_user_ids: tuple[int, ...]
     webhook_host: str
     webhook_port: int
+    notify_delivery_reports: bool
     n8n_webhook_base_url: str
     n8n_send_sms_path: str
     n8n_inbox_path: str
@@ -63,6 +76,7 @@ class Settings:
             allowed_telegram_user_ids=_parse_int_csv("ALLOWED_TELEGRAM_USER_IDS", ""),
             webhook_host=os.getenv("WEBHOOK_HOST", "0.0.0.0").strip() or "0.0.0.0",
             webhook_port=max(1, min(65535, _parse_int("WEBHOOK_PORT", 8090))),
+            notify_delivery_reports=_parse_bool("NOTIFY_DELIVERY_REPORTS", True),
             n8n_webhook_base_url=os.getenv(
                 "N8N_WEBHOOK_BASE_URL", "http://localhost:5678/webhook"
             ).rstrip("/"),
