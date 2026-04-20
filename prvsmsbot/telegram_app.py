@@ -5,18 +5,50 @@ from dataclasses import dataclass
 from typing import Any
 
 from .commands import BotCommandService, friendly_error
+from .security import check_user_access
 
 
 @dataclass
 class PrvSmsTelegramApp:
     bot_token: str
     command_service: BotCommandService
+    allowed_user_ids: tuple[int, ...]
 
     async def _reply_many(self, update: Any, chunks: list[str]) -> None:
         for text in chunks:
             await update.effective_message.reply_text(text)
 
+    async def _authorize_or_reject(self, update: Any) -> bool:
+        user = getattr(update, "effective_user", None)
+        user_id = getattr(user, "id", None)
+        chat = getattr(update, "effective_chat", None)
+        chat_id = getattr(chat, "id", None)
+        chat_type = getattr(chat, "type", "")
+
+        if chat_type != "private":
+            await update.effective_message.reply_text(
+                "Unauthorized. Private chat only."
+            )
+            return False
+
+        if chat_id is None or user_id is None or int(chat_id) != int(user_id):
+            await update.effective_message.reply_text(
+                "Unauthorized. Invalid chat context."
+            )
+            return False
+
+        decision = check_user_access(self.allowed_user_ids, user_id)
+        if decision.allowed:
+            return True
+
+        await update.effective_message.reply_text(
+            "Unauthorized. This bot only accepts approved users."
+        )
+        return False
+
     async def cmd_start(self, update: Any, context: Any) -> None:
+        if not await self._authorize_or_reject(update):
+            return
         text = (
             "Hey! I am prvsmsbot.\n"
             "Friendly SMS/USSD control over n8n workflows.\n\n"
@@ -34,6 +66,8 @@ class PrvSmsTelegramApp:
         await update.effective_message.reply_text(text)
 
     async def cmd_help(self, update: Any, context: Any) -> None:
+        if not await self._authorize_or_reject(update):
+            return
         text = (
             "Commands\n"
             "/send <phone> <message> send SMS\n"
@@ -58,9 +92,13 @@ class PrvSmsTelegramApp:
         await update.effective_message.reply_text(text)
 
     async def cmd_ping(self, update: Any, context: Any) -> None:
+        if not await self._authorize_or_reject(update):
+            return
         await update.effective_message.reply_text("pong")
 
     async def cmd_health(self, update: Any, context: Any) -> None:
+        if not await self._authorize_or_reject(update):
+            return
         try:
             text = self.command_service.health()
             await update.effective_message.reply_text(text)
@@ -68,6 +106,8 @@ class PrvSmsTelegramApp:
             await update.effective_message.reply_text(friendly_error(exc))
 
     async def cmd_send(self, update: Any, context: Any) -> None:
+        if not await self._authorize_or_reject(update):
+            return
         args = context.args or []
         if len(args) < 2:
             await update.effective_message.reply_text("Usage: /send <phone> <message>")
@@ -96,6 +136,8 @@ class PrvSmsTelegramApp:
         sender: str | None,
         search: str | None,
     ) -> None:
+        if not await self._authorize_or_reject(update):
+            return
         page, limit = self.command_service.read_page_limit(args)
         try:
             chunks = self.command_service.inbox_view(
@@ -205,6 +247,8 @@ class PrvSmsTelegramApp:
         )
 
     async def cmd_outbox(self, update: Any, context: Any) -> None:
+        if not await self._authorize_or_reject(update):
+            return
         page, limit = self.command_service.read_page_limit(context.args or [])
         try:
             chunks = self.command_service.outbox_view(page=page, limit=limit)
@@ -213,6 +257,8 @@ class PrvSmsTelegramApp:
             await update.effective_message.reply_text(friendly_error(exc))
 
     async def cmd_senders(self, update: Any, context: Any) -> None:
+        if not await self._authorize_or_reject(update):
+            return
         args = context.args or []
         mode = "all"
         if args:
@@ -230,6 +276,8 @@ class PrvSmsTelegramApp:
             await update.effective_message.reply_text(friendly_error(exc))
 
     async def cmd_ussd(self, update: Any, context: Any) -> None:
+        if not await self._authorize_or_reject(update):
+            return
         args = context.args or []
         if not args:
             await update.effective_message.reply_text("Usage: /ussd *804#")
@@ -243,6 +291,8 @@ class PrvSmsTelegramApp:
             await update.effective_message.reply_text(friendly_error(exc))
 
     async def cmd_ussd_session(self, update: Any, context: Any) -> None:
+        if not await self._authorize_or_reject(update):
+            return
         args = context.args or []
         if not args:
             await update.effective_message.reply_text(
@@ -268,6 +318,8 @@ class PrvSmsTelegramApp:
             await update.effective_message.reply_text(friendly_error(exc))
 
     async def cmd_ussd_live_start(self, update: Any, context: Any) -> None:
+        if not await self._authorize_or_reject(update):
+            return
         args = context.args or []
         if not args:
             await update.effective_message.reply_text("Usage: /ussd_live_start *999#")
@@ -282,6 +334,8 @@ class PrvSmsTelegramApp:
             await update.effective_message.reply_text(friendly_error(exc))
 
     async def cmd_ussd_live_reply(self, update: Any, context: Any) -> None:
+        if not await self._authorize_or_reject(update):
+            return
         args = context.args or []
         if not args:
             await update.effective_message.reply_text("Usage: /ussd_live_reply <input>")
@@ -296,6 +350,8 @@ class PrvSmsTelegramApp:
             await update.effective_message.reply_text(friendly_error(exc))
 
     async def cmd_ussd_live_cancel(self, update: Any, context: Any) -> None:
+        if not await self._authorize_or_reject(update):
+            return
         chat_id = update.effective_chat.id
         try:
             text = self.command_service.ussd_live_cancel(chat_id)

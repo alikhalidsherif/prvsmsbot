@@ -9,6 +9,7 @@ Set these in your n8n runtime:
 - `PRV_BOT_TOKEN`
 - `SMSGATE_BASE_URL`
 - `SMSGATE_ADMIN_KEY`
+- `PRVSMSBOT_SMSGATE_WEBHOOK_URL`
 
 ## Docker Networking Note
 
@@ -25,6 +26,7 @@ Example values:
 - `PRV_BOT_TOKEN=replace_with_shared_secret`
 - `SMSGATE_BASE_URL=http://smsgate:5000`
 - `SMSGATE_ADMIN_KEY=replace_with_gateway_admin_key`
+- `PRVSMSBOT_SMSGATE_WEBHOOK_URL=http://prvsmsbot:8090/webhook/smsgate?token=<same PRV_BOT_TOKEN>`
 
 ## Import Order
 
@@ -36,6 +38,7 @@ Import all files in `workflows/`:
 4. `04-prvsmsbot-ussd-single.json`
 5. `05-prvsmsbot-ussd-session-live.json`
 6. `06-prvsmsbot-health.json`
+7. `07-prvsmsbot-smsgate-webhook-config.json`
 
 Then activate them.
 
@@ -50,6 +53,10 @@ Configured defaults (from `.env.example`):
 - `prvsmsbot/ussd/session` (batch + live actions)
 - `prvsmsbot/health`
 
+SMSGate -> Bot incoming push target:
+
+- `http://prvsmsbot:8090/webhook/smsgate?token=<PRV_BOT_TOKEN>`
+
 If you change paths, update both:
 
 - bot `.env` (`N8N_*_PATH`)
@@ -63,3 +70,10 @@ If you change paths, update both:
 - live: payload includes `action`, `chat_id`, and optional `value`
 
 Live session state is stored in n8n workflow static data (`global.ussdSessions`) keyed by `chat_id`.
+
+## Incoming SMS Notifications
+
+- Activate workflow `07-prvsmsbot-smsgate-webhook-config.json`.
+- It periodically sets SMSGate `webhook_url` to `PRVSMSBOT_SMSGATE_WEBHOOK_URL`.
+- On new SMS, SMSGate pushes to bot webhook endpoint.
+- Bot forwards incoming SMS notifications to allowed Telegram IDs.

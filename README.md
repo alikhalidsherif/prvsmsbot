@@ -9,6 +9,19 @@ This repository is intentionally modular and open-source friendly:
 - n8n workflows talk to SMSGate.
 - Secrets stay in local `.env` files and are gitignored.
 
+## Immediate Answers
+
+- `PRV_BOT_TOKEN` is a shared secret string used to authenticate:
+  - bot -> n8n webhook calls (`X-Prv-Bot-Token`)
+  - SMSGate -> bot incoming webhook calls (`/webhook/smsgate?token=...` or header)
+- Generate it with a random value and set the same value in bot `.env` and n8n env.
+
+Example generation:
+
+- `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`
+
+Yes, incoming SMS notifications are supported. This project now includes a webhook listener in the bot that can push new SMS alerts directly to allowed users, so no need to poll `/inbox` manually.
+
 ## 0. Purpose (One sentence)
 
 Provide a Telegram-first control plane for SMS and USSD operations using modular n8n workflows as stable interfaces.
@@ -105,16 +118,18 @@ All treated as external and unreliable boundaries.
    - `cd prvsmsbot`
 2. Create env:
    - `cp .env.example .env`
-   - fill values (`TELEGRAM_BOT_TOKEN`, `PRV_BOT_TOKEN`, n8n paths)
+   - fill values (`TELEGRAM_BOT_TOKEN`, `PRV_BOT_TOKEN`, `ALLOWED_TELEGRAM_USER_IDS`, n8n paths)
 3. Install:
    - `python3 -m venv .venv`
    - `source .venv/bin/activate`
    - `pip install -e .[dev]`
 4. Import workflows from `workflows/` into n8n.
+   - activate workflow `07-prvsmsbot-smsgate-webhook-config.json` for incoming SMS notifications
 5. Configure n8n env for SMSGate access:
    - `PRV_BOT_TOKEN`
    - `SMSGATE_BASE_URL`
    - `SMSGATE_ADMIN_KEY`
+   - `PRVSMSBOT_SMSGATE_WEBHOOK_URL`
 6. Run bot:
    - `prvsmsbot`
 
@@ -194,6 +209,7 @@ Health check:
 - `workflows/04-prvsmsbot-ussd-single.json`
 - `workflows/05-prvsmsbot-ussd-session-live.json`
 - `workflows/06-prvsmsbot-health.json`
+- `workflows/07-prvsmsbot-smsgate-webhook-config.json`
 
 See detailed n8n wiring in `docs/N8N_SETUP.md`.
 
@@ -202,3 +218,16 @@ See detailed n8n wiring in `docs/N8N_SETUP.md`.
 - Never commit `.env`.
 - Keep `PRV_BOT_TOKEN` and `SMSGATE_ADMIN_KEY` secret.
 - Rotate tokens if accidentally exposed.
+- Restrict Telegram usage with `ALLOWED_TELEGRAM_USER_IDS`.
+- This bot enforces private-chat-only commands and allows only configured Telegram user IDs.
+
+## Your Allowed Users
+
+Use exactly:
+
+- `ALLOWED_TELEGRAM_USER_IDS=8338441637,943629543`
+
+That enforces access for:
+
+- `@prvsms` (`8338441637`)
+- `@alikhalidsherif` (`943629543`)

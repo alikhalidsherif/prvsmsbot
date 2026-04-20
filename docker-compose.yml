@@ -18,3 +18,5 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    ports:
+      - "${WEBHOOK_PORT:-8090}:${WEBHOOK_PORT:-8090}"

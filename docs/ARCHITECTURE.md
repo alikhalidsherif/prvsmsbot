@@ -25,6 +25,12 @@ Expose SMS and USSD capabilities through a Telegram bot using n8n as the integra
 Telegram Input -> Python Bot -> n8n Webhook -> SMSGate API -> Modem/Carrier -> n8n Response -> Telegram Reply
 ```
 
+Incoming message flow:
+
+```text
+Carrier SMS -> SMSGate Poller -> SMSGate Webhook Push -> prvsmsbot /webhook/smsgate -> Telegram Alert
+```
+
 ## 3. Module Pins (Interfaces)
 
 ### Module: Telegram Bot

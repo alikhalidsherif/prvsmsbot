@@ -20,10 +20,28 @@ def _parse_csv(name: str, default: str) -> tuple[str, ...]:
     return tuple(values)
 
 
+def _parse_int_csv(name: str, default: str) -> tuple[int, ...]:
+    raw = os.getenv(name, default)
+    values: list[int] = []
+    for part in raw.split(","):
+        item = part.strip()
+        if not item:
+            continue
+        try:
+            values.append(int(item))
+        except ValueError:
+            continue
+    # Preserve order, remove duplicates
+    return tuple(dict.fromkeys(values))
+
+
 @dataclass(frozen=True)
 class Settings:
     telegram_bot_token: str
     prv_bot_token: str
+    allowed_telegram_user_ids: tuple[int, ...]
+    webhook_host: str
+    webhook_port: int
     n8n_webhook_base_url: str
     n8n_send_sms_path: str
     n8n_inbox_path: str
@@ -42,6 +60,9 @@ class Settings:
         return cls(
             telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN", ""),
             prv_bot_token=os.getenv("PRV_BOT_TOKEN", ""),
+            allowed_telegram_user_ids=_parse_int_csv("ALLOWED_TELEGRAM_USER_IDS", ""),
+            webhook_host=os.getenv("WEBHOOK_HOST", "0.0.0.0").strip() or "0.0.0.0",
+            webhook_port=max(1, min(65535, _parse_int("WEBHOOK_PORT", 8090))),
             n8n_webhook_base_url=os.getenv(
                 "N8N_WEBHOOK_BASE_URL", "http://localhost:5678/webhook"
             ).rstrip("/"),
@@ -75,6 +96,8 @@ class Settings:
             missing.append("TELEGRAM_BOT_TOKEN")
         if not self.prv_bot_token:
             missing.append("PRV_BOT_TOKEN")
+        if not self.allowed_telegram_user_ids:
+            missing.append("ALLOWED_TELEGRAM_USER_IDS")
         if missing:
             joined = ", ".join(missing)
             raise ValueError(f"Missing required environment variables: {joined}")
