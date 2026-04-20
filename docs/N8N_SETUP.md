@@ -10,6 +10,16 @@ Set these in your n8n runtime:
 - `SMSGATE_BASE_URL`
 - `SMSGATE_ADMIN_KEY`
 
+## Docker Networking Note
+
+If n8n and prvsmsbot run in separate compose projects, make sure both are attached to a shared Docker network and that `N8N_WEBHOOK_BASE_URL` resolves from the bot container.
+
+Example:
+
+- n8n reachable as `http://n8n:5678/webhook`
+- then set in bot `.env`:
+  - `N8N_WEBHOOK_BASE_URL=http://n8n:5678/webhook`
+
 Example values:
 
 - `PRV_BOT_TOKEN=replace_with_shared_secret`

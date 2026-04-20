@@ -118,6 +118,11 @@ All treated as external and unreliable boundaries.
 6. Run bot:
    - `prvsmsbot`
 
+Docker run:
+- `docker compose up -d --build`
+- `docker compose logs -f prvsmsbot`
+- restart policy is set to `unless-stopped`
+
 Health check:
 - In Telegram: `/ping` then `/health`
 
@@ -167,6 +172,19 @@ Health check:
 - CLI smoke examples:
   - `prvsmsbot-cli health`
   - `prvsmsbot-cli inbox --mode service --page 1 --limit 20`
+
+## Docker Operations
+
+- Build and start:
+  - `docker compose up -d --build`
+- Check status:
+  - `docker compose ps`
+- View logs:
+  - `docker compose logs -f prvsmsbot`
+- Restart bot:
+  - `docker compose restart prvsmsbot`
+- Stop bot:
+  - `docker compose down`
 
 ## Workflows Included
 
