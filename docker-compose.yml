@@ -12,6 +12,7 @@ services:
       - "${WEBHOOK_PORT:-8090}:${WEBHOOK_PORT:-8090}"
     networks:
       - smsgate-net
+      - kanz_net
     healthcheck:
       test:
         - "CMD-SHELL"
@@ -31,10 +32,7 @@ services:
         max-file: "3"
 
 networks:
-  # Must match the network name used by the SMSGate docker-compose.
-  # If SMSGate uses its own compose file, attach with:
-  #   networks:
-  #     smsgate-net:
-  #       external: true
   smsgate-net:
+    external: true
+  kanz_net:
     external: true
