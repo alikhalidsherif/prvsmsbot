@@ -14,6 +14,7 @@ Key behaviours
 * WebSocket sessions close gracefully: a clean server-side close
   (code 1000) shows "Session ended" rather than an error.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -40,7 +41,7 @@ from .gateway import (
 
 log = logging.getLogger(__name__)
 
-_USSD_TASK_KEY  = "ussd_live_task"
+_USSD_TASK_KEY = "ussd_live_task"
 _USSD_QUEUE_KEY = "ussd_live_queue"
 
 _RULES = MessageCategoryRules()
@@ -76,21 +77,21 @@ def _normalize_ussd_code(raw: str) -> str | None:
 def _ussd_invalid_msg(raw: str) -> str:
     if any(ch.isalpha() for ch in raw):
         return (
-            f"❌ "{raw}" is not a USSD code — only digits, * and # are allowed.\n\n"
+            f'❌ "{raw}" is not a USSD code — only digits, * and # are allowed.\n\n'
             f"Did you mean /ussdlive {raw}?"
         )
-    return f"❌ "{raw}" is not a valid USSD code."
+    return f'❌ "{raw}" is not a valid USSD code.'
 
 
 # ── Formatting helpers ────────────────────────────────────────────────────────
 
 _CATEGORY_ICON: dict[str, str] = {
-    "service:bank":    "🏦",
+    "service:bank": "🏦",
     "service:telecom": "📡",
-    "service:otp":     "🔐",
+    "service:otp": "🔐",
     "service:service": "🏢",
-    "personal":        "👤",
-    "unknown":         "❓",
+    "personal": "👤",
+    "unknown": "❓",
 }
 
 
@@ -118,25 +119,27 @@ def _parse_recipients(raw: Any) -> str:
                 return ", ".join(str(r) for r in parsed)
         except Exception:
             pass
-        return raw.strip('[]"\' ')
+        return raw.strip("[]\"' ")
     return str(raw)
 
 
 def _fmt_inbox_entry(msg: dict[str, Any]) -> str:
-    phone   = normalize_sender(str(msg.get("phone", "?")))
+    phone = normalize_sender(str(msg.get("phone", "?")))
     content = str(msg.get("content", "")).strip().replace("\n", " ")
-    date    = _short_date(str(msg.get("date", "")))
-    cls     = classify_origin(phone, content, _RULES)
-    icon    = _CATEGORY_ICON.get(cls["label"], "❓")
+    date = _short_date(str(msg.get("date", "")))
+    cls = classify_origin(phone, content, _RULES)
+    icon = _CATEGORY_ICON.get(cls["label"], "❓")
     preview = content[:160] + ("…" if len(content) > 160 else "")
     return f"{icon} {phone}  ·  {date}\n{preview}"
 
 
 def _fmt_outbox_entry(msg: dict[str, Any]) -> str:
     recipients = _parse_recipients(msg.get("recipients") or msg.get("to") or "?")
-    content    = str(msg.get("content") or msg.get("message", "")).strip().replace("\n", " ")
-    date       = _short_date(str(msg.get("sent_at") or msg.get("date", "")))
-    preview    = content[:160] + ("…" if len(content) > 160 else "")
+    content = (
+        str(msg.get("content") or msg.get("message", "")).strip().replace("\n", " ")
+    )
+    date = _short_date(str(msg.get("sent_at") or msg.get("date", "")))
+    preview = content[:160] + ("…" if len(content) > 160 else "")
     return f"📤 {recipients}  ·  {date}\n{preview}"
 
 
@@ -158,9 +161,8 @@ def _pagination_keyboard(
         buttons.append(
             InlineKeyboardButton("◀ Prev", callback_data=f"{action}|{page - 1}|{limit}")
         )
-    has_more = (
-        (isinstance(total, int) and page * limit < total)
-        or (not isinstance(total, int) and count >= limit)
+    has_more = (isinstance(total, int) and page * limit < total) or (
+        not isinstance(total, int) and count >= limit
     )
     if has_more:
         buttons.append(
@@ -286,14 +288,14 @@ async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await update.effective_message.reply_text(_fmt_error(exc))  # type: ignore[union-attr]
         return
 
-    status   = str(data.get("status", "unknown"))
-    signal   = data.get("signal_strength", data.get("signal", "?"))
+    status = str(data.get("status", "unknown"))
+    signal = data.get("signal_strength", data.get("signal", "?"))
     operator = data.get("operator", data.get("network_name", "?"))
     con_fail = data.get("consecutive_failures", 0)
     tot_fail = data.get("total_failures", "?")
-    last_ok  = _short_date(str(data.get("last_poll_success_at", "-")))
+    last_ok = _short_date(str(data.get("last_poll_success_at", "-")))
     last_sms = _short_date(str(data.get("last_sms_received_at", "-")))
-    backoff  = data.get("last_backoff_seconds", 0)
+    backoff = data.get("last_backoff_seconds", 0)
 
     status_icon = "✅" if status == "healthy" else ("⚠️" if "degrad" in status else "❌")
 
@@ -315,12 +317,11 @@ async def cmd_send(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     args = context.args or []
     if len(args) < 2:
         await update.effective_message.reply_text(  # type: ignore[union-attr]
-            "Usage: /send <phone> <message>\n"
-            "Example: /send +251911223344 Hello there!"
+            "Usage: /send <phone> <message>\nExample: /send +251911223344 Hello there!"
         )
         return
 
-    phone   = normalize_sender(args[0])
+    phone = normalize_sender(args[0])
     message = " ".join(args[1:]).strip()
     if not message:
         await update.effective_message.reply_text("Message is empty.")  # type: ignore[union-attr]
@@ -333,9 +334,9 @@ async def cmd_send(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.effective_message.reply_text(_fmt_error(exc))  # type: ignore[union-attr]
         return
 
-    ok  = str(data.get("result", "")).upper() == "OK"
-    to  = _parse_recipients(data.get("to", phone))
-    dr  = "yes" if data.get("delivery_report") else "no"
+    ok = str(data.get("result", "")).upper() == "OK"
+    to = _parse_recipients(data.get("to", phone))
+    dr = "yes" if data.get("delivery_report") else "no"
 
     await update.effective_message.reply_text(  # type: ignore[union-attr]
         f"{'✅ Sent' if ok else '⚠️ Not confirmed'}\n"
@@ -352,20 +353,20 @@ def _render_inbox(
     data: dict[str, Any], page: int, limit: int
 ) -> tuple[str, InlineKeyboardMarkup | None]:
     messages = data.get("messages") or []
-    total    = data.get("total", "?")
+    total = data.get("total", "?")
 
     if not messages:
         return "📭 Inbox is empty.", None
 
-    lines    = [_fmt_inbox_entry(m) for m in messages]
-    body     = "\n\n".join(lines)
-    header   = f"📨 Inbox — page {page}  ({len(messages)} shown, {total} total)\n\n"
+    lines = [_fmt_inbox_entry(m) for m in messages]
+    body = "\n\n".join(lines)
+    header = f"📨 Inbox — page {page}  ({len(messages)} shown, {total} total)\n\n"
     keyboard = _pagination_keyboard("inbox", page, limit, len(messages), total)
     return header + body, keyboard
 
 
 async def cmd_inbox(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    args        = context.args or []
+    args = context.args or []
     page, limit = _page_limit(args)
     try:
         data = await _gw(context).sms_history(page=page, limit=limit)
@@ -397,20 +398,20 @@ def _render_outbox(
     data: dict[str, Any], page: int, limit: int
 ) -> tuple[str, InlineKeyboardMarkup | None]:
     messages = data.get("messages") or []
-    total    = data.get("total", "?")
+    total = data.get("total", "?")
 
     if not messages:
         return "📭 Outbox is empty.", None
 
-    lines    = [_fmt_outbox_entry(m) for m in messages]
-    body     = "\n\n".join(lines)
-    header   = f"📤 Outbox — page {page}  ({len(messages)} shown, {total} total)\n\n"
+    lines = [_fmt_outbox_entry(m) for m in messages]
+    body = "\n\n".join(lines)
+    header = f"📤 Outbox — page {page}  ({len(messages)} shown, {total} total)\n\n"
     keyboard = _pagination_keyboard("outbox", page, limit, len(messages), total)
     return header + body, keyboard
 
 
 async def cmd_outbox(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    args        = context.args or []
+    args = context.args or []
     page, limit = _page_limit(args)
     try:
         data = await _gw(context).sms_sent(page=page, limit=limit)
@@ -446,7 +447,7 @@ async def cmd_ussd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
 
-    raw  = args[0]
+    raw = args[0]
     code = _normalize_ussd_code(raw)
     if code is None:
         await update.effective_message.reply_text(_ussd_invalid_msg(raw))  # type: ignore[union-attr]
@@ -480,7 +481,7 @@ async def cmd_ussdsession(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
         return
 
-    raw  = args[0]
+    raw = args[0]
     code = _normalize_ussd_code(raw)
     if code is None:
         await update.effective_message.reply_text(_ussd_invalid_msg(raw))  # type: ignore[union-attr]
@@ -510,7 +511,7 @@ async def cmd_ussdsession(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     lines = []
     for row in history:
-        inp      = row.get("input", "")
+        inp = row.get("input", "")
         response = str(row.get("response") or row.get("error") or "-")
         lines.append(f"[{inp}]\n{response}")
 
@@ -532,7 +533,7 @@ async def cmd_ussdlive(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         )
         return
 
-    raw  = args[0]
+    raw = args[0]
     code = _normalize_ussd_code(raw)
     if code is None:
         await update.effective_message.reply_text(_ussd_invalid_msg(raw))  # type: ignore[union-attr]
@@ -672,7 +673,7 @@ async def cmd_ussdlive(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             log.exception("USSD live WS error")
             await context.bot.send_message(chat_id, f"⚠️ USSD error: {exc}")
         finally:
-            context.chat_data.pop(_USSD_TASK_KEY, None)   # type: ignore[union-attr]
+            context.chat_data.pop(_USSD_TASK_KEY, None)  # type: ignore[union-attr]
             context.chat_data.pop(_USSD_QUEUE_KEY, None)  # type: ignore[union-attr]
 
     task = asyncio.create_task(_run_ws())
@@ -683,8 +684,8 @@ async def cmd_ussdlive(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 async def cmd_ussdcancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    task: asyncio.Task[Any] | None  = context.chat_data.get(_USSD_TASK_KEY)   # type: ignore[union-attr]
-    queue: asyncio.Queue | None     = context.chat_data.get(_USSD_QUEUE_KEY)  # type: ignore[union-attr]
+    task: asyncio.Task[Any] | None = context.chat_data.get(_USSD_TASK_KEY)  # type: ignore[union-attr]
+    queue: asyncio.Queue | None = context.chat_data.get(_USSD_QUEUE_KEY)  # type: ignore[union-attr]
 
     if task is None or task.done():
         await update.effective_message.reply_text("No active live USSD session.")  # type: ignore[union-attr]
@@ -703,8 +704,8 @@ async def handle_ussd_live_input(
     update: Update, context: ContextTypes.DEFAULT_TYPE
 ) -> None:
     """Forward plain-text messages to the active USSD live session queue."""
-    queue: asyncio.Queue | None    = context.chat_data.get(_USSD_QUEUE_KEY)  # type: ignore[union-attr]
-    task: asyncio.Task[Any] | None = context.chat_data.get(_USSD_TASK_KEY)   # type: ignore[union-attr]
+    queue: asyncio.Queue | None = context.chat_data.get(_USSD_QUEUE_KEY)  # type: ignore[union-attr]
+    task: asyncio.Task[Any] | None = context.chat_data.get(_USSD_TASK_KEY)  # type: ignore[union-attr]
 
     if queue is None or task is None or task.done():
         return  # no active session – ignore silently
