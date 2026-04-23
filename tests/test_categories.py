@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from prvsmsbot.categories import (
+from bot.categories import (
     MessageCategoryRules,
     classify_origin,
     is_personal_sender,

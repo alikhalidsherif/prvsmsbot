@@ -12,6 +12,9 @@ Required variables
 Optional variables (with defaults)
 ------------------------------------
   SMSGATE_BASE_URL          http://smsgate:5000
+  SMSGATE_WEBHOOK_URL       (empty) URL SMSGate should POST events to,
+                            e.g. http://prvsmsbot:8090/webhook
+                            When set the bot registers it with SMSGate on startup.
   GATEWAY_TIMEOUT_SECONDS   30
   WEBHOOK_HOST              0.0.0.0
   WEBHOOK_PORT              8090
@@ -74,6 +77,7 @@ class Settings:
     # SMSGate
     smsgate_base_url: str
     smsgate_admin_key: str
+    smsgate_webhook_url: str
     gateway_timeout_seconds: float
 
     # Inbound webhook listener
@@ -81,7 +85,7 @@ class Settings:
     webhook_port: int
     notify_delivery_reports: bool
 
-    # Message categorisation
+    # Pagination
     default_page_limit: int
 
     # ── factory ───────────────────────────────────────────────────────────────
@@ -95,6 +99,7 @@ class Settings:
                 "SMSGATE_BASE_URL", "http://smsgate:5000"
             ).rstrip("/"),
             smsgate_admin_key=os.getenv("SMSGATE_ADMIN_KEY", ""),
+            smsgate_webhook_url=os.getenv("SMSGATE_WEBHOOK_URL", "").strip(),
             gateway_timeout_seconds=float(
                 max(5, _parse_int("GATEWAY_TIMEOUT_SECONDS", 30))
             ),
