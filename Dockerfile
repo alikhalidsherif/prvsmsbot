@@ -7,7 +7,7 @@ WORKDIR /app
 
 COPY pyproject.toml /app/pyproject.toml
 COPY README.md /app/README.md
-COPY prvsmsbot /app/prvsmsbot
+COPY bot /app/bot
 COPY scripts /app/scripts
 
 RUN chmod +x /app/scripts/run.sh && pip install --no-cache-dir .

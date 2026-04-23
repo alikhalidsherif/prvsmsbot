@@ -8,8 +8,19 @@ services:
     init: true
     env_file:
       - .env
+    ports:
+      - "${WEBHOOK_PORT:-8090}:${WEBHOOK_PORT:-8090}"
+    networks:
+      - smsgate-net
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"from prvsmsbot.config import Settings; Settings.from_env().validate(); print('ok')\" || exit 1"]
+      test:
+        - "CMD-SHELL"
+        - |
+          python -c "
+          from bot.config import Settings
+          Settings.from_env().validate()
+          print('ok')
+          " || exit 1
       interval: 30s
       timeout: 10s
       retries: 3
@@ -18,5 +29,12 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-    ports:
-      - "${WEBHOOK_PORT:-8090}:${WEBHOOK_PORT:-8090}"
+
+networks:
+  # Must match the network name used by the SMSGate docker-compose.
+  # If SMSGate uses its own compose file, attach with:
+  #   networks:
+  #     smsgate-net:
+  #       external: true
+  smsgate-net:
+    external: true

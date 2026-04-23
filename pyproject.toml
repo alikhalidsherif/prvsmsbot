@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "prvsmsbot"
-version = "0.1.0"
-description = "Telegram + n8n control plane for SMSGate SMS/USSD workflows"
+version = "2.0.0"
+description = "Telegram bot with direct SMSGate gateway integration (no n8n)"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -13,22 +13,28 @@ authors = [
   { name = "prvsmsbot contributors" }
 ]
 dependencies = [
+  # Telegram bot framework (async, v20+)
   "python-telegram-bot>=21.7",
-  "requests>=2.32.0",
-  "websockets>=12.0"
+  # Async HTTP client for SMSGate REST calls
+  "httpx>=0.27.0",
+  # Async WebSocket client for /ussd/live
+  "websockets>=12.0",
+  # Async HTTP server for the inbound SMSGate webhook
+  "aiohttp>=3.9.0",
 ]
 
 [project.optional-dependencies]
 dev = [
-  "pytest>=8.0.0"
+  "pytest>=8.0.0",
+  "pytest-asyncio>=0.23.0",
 ]
 
 [project.scripts]
-prvsmsbot = "prvsmsbot.main:main"
-prvsmsbot-cli = "prvsmsbot.cli:main"
+prvsmsbot = "bot.main:main"
 
 [tool.setuptools]
-packages = ["prvsmsbot"]
+packages = ["bot"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"
