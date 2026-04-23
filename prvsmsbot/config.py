@@ -26,12 +26,6 @@ def _parse_bool(name: str, default: bool) -> bool:
     return default
 
 
-def _parse_csv(name: str, default: str) -> tuple[str, ...]:
-    raw = os.getenv(name, default)
-    values = [part.strip() for part in raw.split(",") if part.strip()]
-    return tuple(values)
-
-
 def _parse_int_csv(name: str, default: str) -> tuple[int, ...]:
     raw = os.getenv(name, default)
     values: list[int] = []
@@ -64,8 +58,6 @@ class Settings:
     n8n_ussd_live_path: str
     n8n_health_path: str
     n8n_timeout_seconds: int
-    service_sender_patterns: tuple[str, ...]
-    personal_sender_min_digits: int
     default_page_limit: int
 
     @classmethod
@@ -94,13 +86,6 @@ class Settings:
             ),
             n8n_health_path=os.getenv("N8N_HEALTH_PATH", "prvsmsbot/health"),
             n8n_timeout_seconds=max(5, _parse_int("N8N_TIMEOUT_SECONDS", 25)),
-            service_sender_patterns=_parse_csv(
-                "SERVICE_SENDER_PATTERNS",
-                "127,251,Ethio,telebirr,CBE,Awash,Dashen,BOA,bank,otp,code",
-            ),
-            personal_sender_min_digits=max(
-                8, _parse_int("PERSONAL_SENDER_MIN_DIGITS", 10)
-            ),
             default_page_limit=max(5, min(200, _parse_int("DEFAULT_PAGE_LIMIT", 20))),
         )
 

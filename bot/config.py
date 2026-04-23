@@ -16,17 +16,16 @@ Optional variables (with defaults)
   WEBHOOK_HOST              0.0.0.0
   WEBHOOK_PORT              8090
   NOTIFY_DELIVERY_REPORTS   true
-  SERVICE_SENDER_PATTERNS   127,251,Ethio,telebirr,CBE,Awash,Dashen,BOA,bank,otp,code
-  PERSONAL_SENDER_MIN_DIGITS 10
   DEFAULT_PAGE_LIMIT        20
 """
+
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass
 
-
 # ── primitive parsers ─────────────────────────────────────────────────────────
+
 
 def _parse_int(name: str, default: int) -> int:
     raw = os.getenv(name)
@@ -49,11 +48,6 @@ def _parse_bool(name: str, default: bool) -> bool:
     return default
 
 
-def _parse_csv(name: str, default: str) -> tuple[str, ...]:
-    raw = os.getenv(name, default)
-    return tuple(part.strip() for part in raw.split(",") if part.strip())
-
-
 def _parse_int_csv(name: str, default: str) -> tuple[int, ...]:
     raw = os.getenv(name, default)
     result: list[int] = []
@@ -65,10 +59,11 @@ def _parse_int_csv(name: str, default: str) -> tuple[int, ...]:
             result.append(int(item))
         except ValueError:
             continue
-    return tuple(dict.fromkeys(result))   # preserve order, deduplicate
+    return tuple(dict.fromkeys(result))  # preserve order, deduplicate
 
 
 # ── Settings ──────────────────────────────────────────────────────────────────
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -87,8 +82,6 @@ class Settings:
     notify_delivery_reports: bool
 
     # Message categorisation
-    service_sender_patterns: tuple[str, ...]
-    personal_sender_min_digits: int
     default_page_limit: int
 
     # ── factory ───────────────────────────────────────────────────────────────
@@ -96,24 +89,19 @@ class Settings:
     @classmethod
     def from_env(cls) -> "Settings":
         return cls(
-            telegram_bot_token         = os.getenv("TELEGRAM_BOT_TOKEN", ""),
-            allowed_telegram_user_ids  = _parse_int_csv("ALLOWED_TELEGRAM_USER_IDS", ""),
-            smsgate_base_url           = os.getenv(
-                                             "SMSGATE_BASE_URL", "http://smsgate:5000"
-                                         ).rstrip("/"),
-            smsgate_admin_key          = os.getenv("SMSGATE_ADMIN_KEY", ""),
-            gateway_timeout_seconds    = float(
-                                             max(5, _parse_int("GATEWAY_TIMEOUT_SECONDS", 30))
-                                         ),
-            webhook_host               = os.getenv("WEBHOOK_HOST", "0.0.0.0").strip() or "0.0.0.0",
-            webhook_port               = max(1, min(65535, _parse_int("WEBHOOK_PORT", 8090))),
-            notify_delivery_reports    = _parse_bool("NOTIFY_DELIVERY_REPORTS", True),
-            service_sender_patterns    = _parse_csv(
-                                             "SERVICE_SENDER_PATTERNS",
-                                             "127,251,Ethio,telebirr,CBE,Awash,Dashen,BOA,bank,otp,code",
-                                         ),
-            personal_sender_min_digits = max(8, _parse_int("PERSONAL_SENDER_MIN_DIGITS", 10)),
-            default_page_limit         = max(5, min(200, _parse_int("DEFAULT_PAGE_LIMIT", 20))),
+            telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN", ""),
+            allowed_telegram_user_ids=_parse_int_csv("ALLOWED_TELEGRAM_USER_IDS", ""),
+            smsgate_base_url=os.getenv(
+                "SMSGATE_BASE_URL", "http://smsgate:5000"
+            ).rstrip("/"),
+            smsgate_admin_key=os.getenv("SMSGATE_ADMIN_KEY", ""),
+            gateway_timeout_seconds=float(
+                max(5, _parse_int("GATEWAY_TIMEOUT_SECONDS", 30))
+            ),
+            webhook_host=os.getenv("WEBHOOK_HOST", "0.0.0.0").strip() or "0.0.0.0",
+            webhook_port=max(1, min(65535, _parse_int("WEBHOOK_PORT", 8090))),
+            notify_delivery_reports=_parse_bool("NOTIFY_DELIVERY_REPORTS", True),
+            default_page_limit=max(5, min(200, _parse_int("DEFAULT_PAGE_LIMIT", 20))),
         )
 
     # ── validation ────────────────────────────────────────────────────────────

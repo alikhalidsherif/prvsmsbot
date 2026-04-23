@@ -23,10 +23,7 @@ class BotCommandService:
 
     @property
     def category_rules(self) -> MessageCategoryRules:
-        return MessageCategoryRules(
-            service_patterns=self.settings.service_sender_patterns,
-            personal_min_digits=self.settings.personal_sender_min_digits,
-        )
+        return MessageCategoryRules()
 
     def read_page_limit(
         self, args: list[str], default_page: int = 1

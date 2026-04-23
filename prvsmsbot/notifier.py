@@ -15,10 +15,7 @@ class IncomingSmsNotifier:
 
     @property
     def _rules(self) -> MessageCategoryRules:
-        return MessageCategoryRules(
-            service_patterns=self.settings.service_sender_patterns,
-            personal_min_digits=self.settings.personal_sender_min_digits,
-        )
+        return MessageCategoryRules()
 
     def notify(self, payload: dict[str, Any]) -> None:
         sms_type = str(payload.get("type", "")).strip().lower()
