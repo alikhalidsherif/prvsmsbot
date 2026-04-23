@@ -7,6 +7,7 @@ All calls go directly to SMSGate – no n8n in the middle.
 Auth: every protected endpoint requires the header ``X-Admin-Key: <ADMIN_KEY>``.
 The WebSocket /ussd/live endpoint is secured by network boundary only (no header).
 """
+
 from __future__ import annotations
 
 import json
@@ -21,23 +22,29 @@ log = logging.getLogger(__name__)
 
 # ── Sentinel error ────────────────────────────────────────────────────────────
 
+
 class GatewayError(RuntimeError):
     """Raised for any SMSGate call that cannot be completed."""
+
 
 class GatewayUnavailable(GatewayError):
     """Raised when SMSGate is unreachable (network / connection error)."""
 
+
 class GatewayBusy(GatewayError):
     """Raised on HTTP 423 – another USSD session is active."""
 
+
 class GatewayTimeout(GatewayError):
     """Raised on HTTP 504 – modem did not respond in time."""
+
 
 class GatewayModemError(GatewayError):
     """Raised on HTTP 502 – underlying modem / API error."""
 
 
 # ── Client ────────────────────────────────────────────────────────────────────
+
 
 class SMSGateClient:
     """
@@ -70,9 +77,9 @@ class SMSGateClient:
         """Convert http(s) base URL to ws(s) for the WebSocket endpoint."""
         base = self._base
         if base.startswith("https://"):
-            base = "wss://" + base[len("https://"):]
+            base = "wss://" + base[len("https://") :]
         elif base.startswith("http://"):
-            base = "ws://" + base[len("http://"):]
+            base = "ws://" + base[len("http://") :]
         return f"{base}/{path.lstrip('/')}"
 
     async def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
@@ -97,6 +104,22 @@ class SMSGateClient:
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 resp = await client.post(url, headers=headers, json=body or {})
+        except httpx.TransportError as exc:
+            raise GatewayUnavailable(f"Gateway unreachable: {exc}") from exc
+        return self._parse(resp, path)
+
+    async def _delete(
+        self,
+        path: str,
+        extra_headers: dict[str, str] | None = None,
+    ) -> Any:
+        url = self._url(path)
+        headers = dict(self._headers)
+        if extra_headers:
+            headers.update(extra_headers)
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                resp = await client.delete(url, headers=headers)
         except httpx.TransportError as exc:
             raise GatewayUnavailable(f"Gateway unreachable: {exc}") from exc
         return self._parse(resp, path)
@@ -221,3 +244,45 @@ class SMSGateClient:
     def ws_url_ussd_live(self) -> str:
         """Return the WebSocket URL for /ussd/live (no auth header, network-secured)."""
         return self._ws_url("/ussd/live")
+
+    # ── Config ────────────────────────────────────────────────────────────────
+
+    async def config_get(self) -> dict[str, Any]:
+        """GET /config – all runtime config key/value pairs."""
+        return await self._get("/config")
+
+    # ── SMS – live modem inbox ────────────────────────────────────────────────
+
+    async def sms_list(
+        self,
+        *,
+        box: str = "inbox",
+        page: int = 1,
+        count: int = 20,
+    ) -> dict[str, Any]:
+        """GET /sms – live messages direct from modem (not SQLite history)."""
+        return await self._get(
+            "/sms", params={"box": box, "page": page, "count": count}
+        )
+
+    async def sms_get(self, index: int) -> dict[str, Any]:
+        """GET /sms/{index} – fetch and mark-read a single modem message."""
+        return await self._get(f"/sms/{index}")
+
+    async def sms_mark_read(self, index: int) -> dict[str, Any]:
+        """POST /sms/mark-read/{index} – mark a modem message as read."""
+        return await self._post(f"/sms/mark-read/{index}")
+
+    async def sms_delete(self, index: int) -> dict[str, Any]:
+        """DELETE /sms/{index} – delete a single message from the modem."""
+        return await self._delete(f"/sms/{index}")
+
+    async def sms_delete_all_inbox(self) -> dict[str, Any]:
+        """DELETE /sms/inbox/all – wipe entire modem inbox (DB copy kept)."""
+        return await self._delete("/sms/inbox/all", extra_headers={"X-Confirm": "yes"})
+
+    # ── Device ────────────────────────────────────────────────────────────────
+
+    async def device_info(self) -> dict[str, Any]:
+        """GET /device/info – device details, signal and network status."""
+        return await self._get("/device/info")

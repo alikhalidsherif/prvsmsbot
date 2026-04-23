@@ -46,6 +46,33 @@ _USSD_QUEUE_KEY = "ussd_live_queue"
 
 _RULES = MessageCategoryRules()
 
+# ── Network type / signal helpers ─────────────────────────────────────────────
+
+_NET_TYPE: dict[str, str] = {
+    "0": "No service",
+    "1": "GSM",
+    "3": "GPRS",
+    "4": "EDGE",
+    "5": "WCDMA",
+    "6": "HSDPA",
+    "7": "HSUPA",
+    "8": "HSPA",
+    "9": "HSPA+",
+    "10": "DC-HSPA+",
+    "19": "LTE",
+    "41": "LTE",
+    "46": "LTE+",
+    "64": "5G NSA",
+    "65": "5G SA",
+}
+
+
+def _signal_bars(icon: Any) -> str:
+    n = int(icon) if str(icon).isdigit() else 0
+    n = max(0, min(5, n))
+    return "█" * n + "░" * (5 - n)
+
+
 # ── USSD helpers ──────────────────────────────────────────────────────────────
 
 _USSD_CHAR_RE = re.compile(r"^[*#\d]+$")
@@ -252,22 +279,28 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.effective_message.reply_text(  # type: ignore[union-attr]
         "📖 Commands\n\n"
-        "/send <phone> <message>\n"
-        "  Send an SMS.  Phone is auto-normalised (251… → +251…).\n\n"
-        "/inbox [page] [limit]\n"
-        "  Received messages with category icons and ◀▶ page buttons.\n\n"
-        "/outbox [page] [limit]\n"
-        "  Sent message history with ◀▶ page buttons.\n\n"
-        "/health\n"
-        "  Modem status, operator, signal and failure counts.\n\n"
-        "/ussd <code>\n"
-        "  Single-shot USSD.  Bare numbers are auto-wrapped: 804 → *804#\n\n"
-        "/ussdsession <code> <step1> <step2> …\n"
-        "  Automated multi-step USSD.\n\n"
-        "/ussdlive <code>\n"
-        "  Live interactive USSD – type menu choices as plain messages.\n"
-        "  Use /ussdcancel to end the session.\n\n"
-        "/ping  — bot liveness check"
+        "📨 Messages\n"
+        "  /inbox [page] [limit]       — received (DB history)\n"
+        "  /outbox [page] [limit]      — sent history\n"
+        "  /unread                     — live unread count\n"
+        "  /smsview <index>            — read one message by modem index\n\n"
+        "✉️ Send\n"
+        "  /send <phone> <message>\n\n"
+        "🗑 Manage\n"
+        "  /delete <index>             — delete a modem message\n"
+        "  /clearinbox                 — wipe entire modem inbox\n\n"
+        "📟 USSD\n"
+        "  /ussd <code>                — single-shot (804 → *804#)\n"
+        "  /ussdsession <code> <s>…    — automated multi-step\n"
+        "  /ussdlive <code>            — live interactive session\n"
+        "  /ussdcancel\n\n"
+        "🛠 Gateway / Modem\n"
+        "  /health                     — modem health stats\n"
+        "  /device                     — signal, network, device info\n"
+        "  /config                     — view gateway config\n"
+        "  /config <key> <value>       — update a config value\n"
+        "  /reboot                     — reboot the modem\n\n"
+        "  /ping"
     )
 
 
@@ -695,6 +728,266 @@ async def cmd_ussdcancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await queue.put(None)  # sentinel → _run_ws cancels cleanly
 
     await update.effective_message.reply_text("Cancelling…")  # type: ignore[union-attr]
+
+
+# ── /unread ───────────────────────────────────────────────────────────────────
+
+
+async def cmd_unread(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    try:
+        data = await _gw(context).sms_unread_count()
+    except Exception as exc:
+        await update.effective_message.reply_text(_fmt_error(exc))  # type: ignore[union-attr]
+        return
+
+    local_unread = data.get("LocalUnread", "?")
+    local_inbox = data.get("LocalInbox", "?")
+    sim_unread = data.get("SimUnread", "?")
+    sim_inbox = data.get("SimInbox", "?")
+    sim_cap = data.get("SIMCapacity", "?")
+
+    await update.effective_message.reply_text(  # type: ignore[union-attr]
+        f"📬 Unread messages\n\n"
+        f"Device inbox:  {local_unread} unread / {local_inbox} total\n"
+        f"SIM card:      {sim_unread} unread / {sim_inbox} total  (cap {sim_cap})"
+    )
+
+
+# ── /smsview ──────────────────────────────────────────────────────────────────
+
+
+async def cmd_smsview(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    args = context.args or []
+    if not args or not args[0].isdigit():
+        await update.effective_message.reply_text(  # type: ignore[union-attr]
+            "Usage: /smsview <modem_index>"
+        )
+        return
+
+    index = int(args[0])
+    try:
+        msg = await _gw(context).sms_get(index)
+    except Exception as exc:
+        await update.effective_message.reply_text(_fmt_error(exc))  # type: ignore[union-attr]
+        return
+
+    phone = normalize_sender(str(msg.get("Phone", "?")))
+    content = str(msg.get("Content", "")).strip()
+    date = _short_date(str(msg.get("Date", "")))
+    cls = classify_origin(phone, content, _RULES)
+    icon = _CATEGORY_ICON.get(cls["label"], "❓")
+
+    await update.effective_message.reply_text(  # type: ignore[union-attr]
+        f"{icon} #{index}  ·  {phone}  ·  {date}\n\n{content}"
+    )
+
+
+# ── /delete ───────────────────────────────────────────────────────────────────
+
+
+async def cmd_delete(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    args = context.args or []
+    if not args or not args[0].isdigit():
+        await update.effective_message.reply_text(  # type: ignore[union-attr]
+            "Usage: /delete <modem_index>"
+        )
+        return
+
+    index = int(args[0])
+    preview = ""
+    try:
+        msg = await _gw(context).sms_get(index)
+        phone = normalize_sender(str(msg.get("Phone", "?")))
+        content = str(msg.get("Content", "")).strip().replace("\n", " ")[:80]
+        preview = f"\nFrom: {phone}\n{content}"
+    except Exception:
+        pass  # preview is optional — don't block the confirm prompt
+
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("✅ Delete", callback_data=f"yes|delete|{index}"),
+                InlineKeyboardButton("❌ Cancel", callback_data="no"),
+            ]
+        ]
+    )
+    await update.effective_message.reply_text(  # type: ignore[union-attr]
+        f"🗑 Delete SMS #{index}?{preview}",
+        reply_markup=keyboard,
+    )
+
+
+# ── /clearinbox ───────────────────────────────────────────────────────────────
+
+
+async def cmd_clearinbox(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("✅ Clear all", callback_data="yes|clearinbox"),
+                InlineKeyboardButton("❌ Cancel", callback_data="no"),
+            ]
+        ]
+    )
+    await update.effective_message.reply_text(  # type: ignore[union-attr]
+        "⚠️ Clear entire modem inbox?\n"
+        "All messages are deleted from the modem.\n"
+        "They remain in the bot's database.",
+        reply_markup=keyboard,
+    )
+
+
+# ── /device ───────────────────────────────────────────────────────────────────
+
+
+async def cmd_device(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    try:
+        data = await _gw(context).device_info()
+    except Exception as exc:
+        await update.effective_message.reply_text(_fmt_error(exc))  # type: ignore[union-attr]
+        return
+
+    dev = data.get("device") or {}
+    sig = data.get("signal") or data.get("status") or {}
+
+    name = dev.get("DeviceName", "?")
+    imei = dev.get("Imei", "?")
+    hw = dev.get("HardwareVersion", "?")
+    fw = dev.get("SoftwareVersion", "?")
+
+    net_code = str(sig.get("CurrentNetworkType", ""))
+    net_label = _NET_TYPE.get(net_code, f"type {net_code}" if net_code else "?")
+    bars = _signal_bars(sig.get("SignalIcon", 0))
+    operator = sig.get("FullName", sig.get("ShortName", "?"))
+
+    await update.effective_message.reply_text(  # type: ignore[union-attr]
+        f"📱 {name}\n"
+        f"IMEI:  {imei}\n"
+        f"HW/FW: {hw} / {fw}\n\n"
+        f"📶 {bars}  {net_label}\n"
+        f"Operator: {operator}"
+    )
+
+
+# ── /config ───────────────────────────────────────────────────────────────────
+
+_CONFIG_DESCRIPTIONS: dict[str, str] = {
+    "poll_interval": "seconds between SMS polls",
+    "cleanup_interval": "seconds between auto-cleanup runs",
+    "modem_max_threshold": "max messages on modem before oldest are purged",
+    "modem_message_max_age": "days before modem copy is deleted (DB kept)",
+    "webhook_url": "URL SMSGate POSTs events to",
+}
+
+
+async def cmd_config(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    args = context.args or []
+
+    # ── update: /config <key> <value> ────────────────────────────────────────
+    if len(args) >= 2:
+        key = args[0]
+        value = " ".join(args[1:])
+        if key not in _CONFIG_DESCRIPTIONS:
+            valid = ", ".join(_CONFIG_DESCRIPTIONS)
+            await update.effective_message.reply_text(  # type: ignore[union-attr]
+                f'❌ Unknown key "{key}".\nValid keys: {valid}'
+            )
+            return
+        try:
+            result = await _gw(context).set_config(**{key: value})
+        except Exception as exc:
+            await update.effective_message.reply_text(_fmt_error(exc))  # type: ignore[union-attr]
+            return
+        errs = result.get("errors", {})
+        if errs and key in errs:
+            await update.effective_message.reply_text(f"❌ {key}: {errs[key]}")  # type: ignore[union-attr]
+        else:
+            await update.effective_message.reply_text(f"✅ {key} → {value!r}")  # type: ignore[union-attr]
+        return
+
+    # ── view: /config ─────────────────────────────────────────────────────────
+    try:
+        cfg = await _gw(context).config_get()
+    except Exception as exc:
+        await update.effective_message.reply_text(_fmt_error(exc))  # type: ignore[union-attr]
+        return
+
+    lines = ["⚙️ Gateway config\n"]
+    for key, desc in _CONFIG_DESCRIPTIONS.items():
+        val = cfg.get(key, "?")
+        lines.append(f"{key}: {val}\n  ({desc})")
+    lines.append("\nTo update: /config <key> <value>")
+    await update.effective_message.reply_text("\n".join(lines))  # type: ignore[union-attr]
+
+
+# ── /reboot ───────────────────────────────────────────────────────────────────
+
+
+async def cmd_reboot(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("✅ Yes, reboot", callback_data="yes|reboot"),
+                InlineKeyboardButton("❌ Cancel", callback_data="no"),
+            ]
+        ]
+    )
+    await update.effective_message.reply_text(  # type: ignore[union-attr]
+        "⚠️ Reboot the modem?\n"
+        "It will be unreachable for ~30 seconds.\n"
+        "Any active USSD session will be dropped.",
+        reply_markup=keyboard,
+    )
+
+
+# ── confirmation callback ─────────────────────────────────────────────────────
+
+
+async def cb_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    await query.answer()  # type: ignore[union-attr]
+    data = query.data or ""  # type: ignore[union-attr]
+
+    if data == "no" or data.startswith("no|"):
+        await query.edit_message_text("Cancelled.")  # type: ignore[union-attr]
+        return
+
+    parts = data.split("|")
+    action = parts[1] if len(parts) > 1 else ""
+
+    if action == "reboot":
+        try:
+            await _gw(context).device_reboot()
+            await query.edit_message_text(  # type: ignore[union-attr]
+                "🔄 Reboot triggered. Modem offline for ~30 seconds."
+            )
+        except Exception as exc:
+            await query.edit_message_text(_fmt_error(exc))  # type: ignore[union-attr]
+
+    elif action == "clearinbox":
+        try:
+            result = await _gw(context).sms_delete_all_inbox()
+            deleted = result.get("deleted_count", "?")
+            await query.edit_message_text(  # type: ignore[union-attr]
+                f"✅ Cleared {deleted} messages from modem inbox.\n"
+                "All messages are still in the database."
+            )
+        except Exception as exc:
+            await query.edit_message_text(_fmt_error(exc))  # type: ignore[union-attr]
+
+    elif action == "delete":
+        if len(parts) < 3 or not parts[2].isdigit():
+            await query.edit_message_text("❌ Invalid index.")  # type: ignore[union-attr]
+            return
+        index = int(parts[2])
+        try:
+            await _gw(context).sms_delete(index)
+            await query.edit_message_text(f"✅ SMS #{index} deleted from modem.")  # type: ignore[union-attr]
+        except Exception as exc:
+            await query.edit_message_text(_fmt_error(exc))  # type: ignore[union-attr]
+
+    else:
+        await query.edit_message_text(f"❌ Unknown action: {action}")  # type: ignore[union-attr]
 
 
 # ── Plain-text → live USSD input ──────────────────────────────────────────────

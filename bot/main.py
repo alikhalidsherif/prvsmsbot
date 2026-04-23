@@ -37,15 +37,23 @@ from .config import Settings
 from .gateway import SMSGateClient
 from .handlers import (
     _USSD_TASK_KEY,
+    cb_confirm,
     cb_inbox,
     cb_outbox,
+    cmd_clearinbox,
+    cmd_config,
+    cmd_delete,
+    cmd_device,
     cmd_health,
     cmd_help,
     cmd_inbox,
     cmd_outbox,
     cmd_ping,
+    cmd_reboot,
     cmd_send,
+    cmd_smsview,
     cmd_start,
+    cmd_unread,
     cmd_ussd,
     cmd_ussdcancel,
     cmd_ussdlive,
@@ -102,6 +110,13 @@ def build_application(settings: Settings) -> Application:
         ("send", cmd_send),
         ("inbox", cmd_inbox),
         ("outbox", cmd_outbox),
+        ("unread", cmd_unread),
+        ("smsview", cmd_smsview),
+        ("delete", cmd_delete),
+        ("clearinbox", cmd_clearinbox),
+        ("device", cmd_device),
+        ("config", cmd_config),
+        ("reboot", cmd_reboot),
         ("ussd", cmd_ussd),
         ("ussdsession", cmd_ussdsession),
         ("ussdlive", cmd_ussdlive),
@@ -109,9 +124,10 @@ def build_application(settings: Settings) -> Application:
     ]:
         app.add_handler(CommandHandler(name, handler, filters=user_filter))
 
-    # ── Inline keyboard callbacks (pagination) ────────────────────────────────
+    # ── Inline keyboard callbacks ─────────────────────────────────────────────
     app.add_handler(CallbackQueryHandler(cb_inbox, pattern=r"^inbox\|"))
     app.add_handler(CallbackQueryHandler(cb_outbox, pattern=r"^outbox\|"))
+    app.add_handler(CallbackQueryHandler(cb_confirm, pattern=r"^(yes|no)(\|.*)?$"))
 
     # ── Plain-text → live USSD input ──────────────────────────────────────────
     app.add_handler(
