@@ -15,7 +15,11 @@ Optional variables (with defaults)
   SMSGATE_WEBHOOK_URL       (empty) URL SMSGate should POST events to,
                             e.g. http://prvsmsbot:8090/webhook
                             When set the bot registers it with SMSGate on startup.
-  OUTBOUND_PROXY_URL        (empty) Proxy URL for outbound HTTP requests.
+  OUTBOUND_PROXY_URL        (empty) Legacy Telegram outbound proxy URL.
+  TELEGRAM_PROXY_URL        (empty) Preferred Telegram outbound proxy URL.
+                            Falls back to OUTBOUND_PROXY_URL when unset.
+  GATEWAY_PROXY_URL         (empty) Optional proxy URL for SMSGate HTTP calls.
+                            Keep empty when SMSGate is on Docker/internal networks.
                             For SOCKS, prefer socks5h://... so DNS resolves via proxy.
   GATEWAY_TIMEOUT_SECONDS   30
   WEBHOOK_HOST              0.0.0.0
@@ -81,6 +85,8 @@ class Settings:
     smsgate_admin_key: str
     smsgate_webhook_url: str
     outbound_proxy_url: str
+    telegram_proxy_url: str
+    gateway_proxy_url: str
     gateway_timeout_seconds: float
 
     # Inbound webhook listener
@@ -104,6 +110,9 @@ class Settings:
             smsgate_admin_key=os.getenv("SMSGATE_ADMIN_KEY", ""),
             smsgate_webhook_url=os.getenv("SMSGATE_WEBHOOK_URL", "").strip(),
             outbound_proxy_url=os.getenv("OUTBOUND_PROXY_URL", "").strip(),
+            telegram_proxy_url=os.getenv("TELEGRAM_PROXY_URL", "").strip()
+            or os.getenv("OUTBOUND_PROXY_URL", "").strip(),
+            gateway_proxy_url=os.getenv("GATEWAY_PROXY_URL", "").strip(),
             gateway_timeout_seconds=float(
                 max(5, _parse_int("GATEWAY_TIMEOUT_SECONDS", 30))
             ),

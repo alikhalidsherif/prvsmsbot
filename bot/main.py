@@ -99,7 +99,7 @@ def _build_telegram_application(
             from telegram.request import HTTPXRequest  # type: ignore
         except Exception:
             log.warning(
-                "OUTBOUND_PROXY_URL is set, but telegram.request.HTTPXRequest "
+                "TELEGRAM_PROXY_URL/OUTBOUND_PROXY_URL is set, but telegram.request.HTTPXRequest "
                 "is unavailable in this runtime; Telegram may connect without proxy."
             )
         else:
@@ -116,18 +116,19 @@ def _build_telegram_application(
 
 def build_application(settings: Settings) -> Application:
     log = logging.getLogger(__name__)
-    proxy_url = _normalize_proxy_url(settings.outbound_proxy_url)
+    telegram_proxy_url = _normalize_proxy_url(settings.telegram_proxy_url)
+    gateway_proxy_url = _normalize_proxy_url(settings.gateway_proxy_url)
 
     gw = SMSGateClient(
         base_url=settings.smsgate_base_url,
         admin_key=settings.smsgate_admin_key,
         timeout=settings.gateway_timeout_seconds,
-        proxy_url=proxy_url,
+        proxy_url=gateway_proxy_url,
     )
 
     app: Application = _build_telegram_application(
         token=settings.telegram_bot_token,
-        proxy_url=proxy_url,
+        proxy_url=telegram_proxy_url,
         log=log,
     )
 
@@ -209,10 +210,16 @@ async def _async_main(settings: Settings) -> None:
         settings.webhook_port,
     )
 
+    initialized = False
+    started = False
+    polling_started = False
     try:
         await tg_app.initialize()
+        initialized = True
         await tg_app.start()
+        started = True
         await tg_app.updater.start_polling(drop_pending_updates=True)  # type: ignore[union-attr]
+        polling_started = True
 
         stop_event = asyncio.Event()
 
@@ -230,9 +237,12 @@ async def _async_main(settings: Settings) -> None:
         await stop_event.wait()
 
     finally:
-        await tg_app.updater.stop()  # type: ignore[union-attr]
-        await tg_app.stop()
-        await tg_app.shutdown()
+        if polling_started and tg_app.updater and tg_app.updater.running:
+            await tg_app.updater.stop()
+        if started:
+            await tg_app.stop()
+        if initialized:
+            await tg_app.shutdown()
         await webhook_runner.cleanup()
         log.info("Shutdown complete.")
 
