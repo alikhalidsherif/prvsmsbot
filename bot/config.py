@@ -15,6 +15,8 @@ Optional variables (with defaults)
   SMSGATE_WEBHOOK_URL       (empty) URL SMSGate should POST events to,
                             e.g. http://prvsmsbot:8090/webhook
                             When set the bot registers it with SMSGate on startup.
+  OUTBOUND_PROXY_URL        (empty) Proxy URL for outbound HTTP requests.
+                            For SOCKS, prefer socks5h://... so DNS resolves via proxy.
   GATEWAY_TIMEOUT_SECONDS   30
   WEBHOOK_HOST              0.0.0.0
   WEBHOOK_PORT              8090
@@ -78,6 +80,7 @@ class Settings:
     smsgate_base_url: str
     smsgate_admin_key: str
     smsgate_webhook_url: str
+    outbound_proxy_url: str
     gateway_timeout_seconds: float
 
     # Inbound webhook listener
@@ -100,6 +103,7 @@ class Settings:
             ).rstrip("/"),
             smsgate_admin_key=os.getenv("SMSGATE_ADMIN_KEY", ""),
             smsgate_webhook_url=os.getenv("SMSGATE_WEBHOOK_URL", "").strip(),
+            outbound_proxy_url=os.getenv("OUTBOUND_PROXY_URL", "").strip(),
             gateway_timeout_seconds=float(
                 max(5, _parse_int("GATEWAY_TIMEOUT_SECONDS", 30))
             ),

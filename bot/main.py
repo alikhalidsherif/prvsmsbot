@@ -24,7 +24,6 @@ import logging
 import os
 import signal
 
-from telegram import Bot
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -83,17 +82,54 @@ def _load_dotenv(path: str = ".env") -> None:
         pass
 
 
+def _normalize_proxy_url(url: str) -> str:
+    """Ensure socks5 URLs use socks5h so DNS resolution goes through the proxy."""
+    raw = (url or "").strip()
+    if raw.startswith("socks5://"):
+        return "socks5h://" + raw[len("socks5://") :]
+    return raw
+
+
+def _build_telegram_application(
+    token: str, proxy_url: str, log: logging.Logger
+) -> Application:
+    builder = Application.builder().token(token)
+    if proxy_url:
+        try:
+            from telegram.request import HTTPXRequest  # type: ignore
+        except Exception:
+            log.warning(
+                "OUTBOUND_PROXY_URL is set, but telegram.request.HTTPXRequest "
+                "is unavailable in this runtime; Telegram may connect without proxy."
+            )
+        else:
+            try:
+                request = HTTPXRequest(proxy_url=proxy_url)
+            except TypeError:
+                request = HTTPXRequest(proxy=proxy_url)
+            builder = builder.request(request)
+    return builder.build()
+
+
 # ── Application builder ───────────────────────────────────────────────────────
 
 
 def build_application(settings: Settings) -> Application:
+    log = logging.getLogger(__name__)
+    proxy_url = _normalize_proxy_url(settings.outbound_proxy_url)
+
     gw = SMSGateClient(
         base_url=settings.smsgate_base_url,
         admin_key=settings.smsgate_admin_key,
         timeout=settings.gateway_timeout_seconds,
+        proxy_url=proxy_url,
     )
 
-    app: Application = Application.builder().token(settings.telegram_bot_token).build()
+    app: Application = _build_telegram_application(
+        token=settings.telegram_bot_token,
+        proxy_url=proxy_url,
+        log=log,
+    )
 
     app.bot_data["gateway"] = gw
 

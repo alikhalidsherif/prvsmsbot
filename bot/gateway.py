@@ -10,6 +10,7 @@ The WebSocket /ussd/live endpoint is secured by network boundary only (no header
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 from typing import Any
@@ -60,13 +61,27 @@ class SMSGateClient:
         HTTP request timeout in seconds (default 30).
     """
 
-    def __init__(self, base_url: str, admin_key: str, timeout: float = 30.0) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        admin_key: str,
+        timeout: float = 30.0,
+        proxy_url: str = "",
+    ) -> None:
         self._base = base_url.rstrip("/")
         self._timeout = timeout
         self._headers = {
             "X-Admin-Key": admin_key,
             "Content-Type": "application/json",
         }
+        self._client_kwargs: dict[str, Any] = {"timeout": self._timeout}
+        if proxy_url:
+            proxy_key = (
+                "proxy"
+                if "proxy" in inspect.signature(httpx.AsyncClient.__init__).parameters
+                else "proxies"
+            )
+            self._client_kwargs[proxy_key] = proxy_url
 
     # ── low-level helpers ─────────────────────────────────────────────────────
 
@@ -85,7 +100,7 @@ class SMSGateClient:
     async def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
         url = self._url(path)
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
+            async with httpx.AsyncClient(**self._client_kwargs) as client:
                 resp = await client.get(url, headers=self._headers, params=params)
         except httpx.TransportError as exc:
             raise GatewayUnavailable(f"Gateway unreachable: {exc}") from exc
@@ -102,7 +117,7 @@ class SMSGateClient:
         if extra_headers:
             headers.update(extra_headers)
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
+            async with httpx.AsyncClient(**self._client_kwargs) as client:
                 resp = await client.post(url, headers=headers, json=body or {})
         except httpx.TransportError as exc:
             raise GatewayUnavailable(f"Gateway unreachable: {exc}") from exc
@@ -118,7 +133,7 @@ class SMSGateClient:
         if extra_headers:
             headers.update(extra_headers)
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
+            async with httpx.AsyncClient(**self._client_kwargs) as client:
                 resp = await client.delete(url, headers=headers)
         except httpx.TransportError as exc:
             raise GatewayUnavailable(f"Gateway unreachable: {exc}") from exc
