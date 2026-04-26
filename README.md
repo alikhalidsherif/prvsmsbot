@@ -143,6 +143,15 @@ Docker run:
 Health check:
 - In Telegram: `/ping` then `/health`
 
+Telegram intake mode:
+- Default is polling (`TELEGRAM_UPDATE_MODE=polling`).
+- For production webhook mode set:
+  - `TELEGRAM_UPDATE_MODE=webhook`
+  - `TELEGRAM_WEBHOOK_PUBLIC_URL=https://your-public-domain`
+  - `TELEGRAM_WEBHOOK_PATH=/telegram/webhook` (or your custom path)
+  - `TELEGRAM_WEBHOOK_SECRET=<random-secret>` (recommended)
+- Ensure HTTPS/TLS is configured in front of the bot and forwarded to `WEBHOOK_PORT`.
+
 ## 10. Known Failure Modes
 
 - n8n webhook not active or wrong path -> bot returns automation layer error

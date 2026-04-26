@@ -5,7 +5,6 @@ Async HTTP client for the self-hosted SMSGate gateway.
 All calls go directly to SMSGate – no n8n in the middle.
 
 Auth: every protected endpoint requires the header ``X-Admin-Key: <ADMIN_KEY>``.
-The WebSocket /ussd/live endpoint is secured by network boundary only (no header).
 """
 
 from __future__ import annotations
@@ -16,8 +15,6 @@ import logging
 from typing import Any
 
 import httpx
-import websockets
-import websockets.exceptions
 
 log = logging.getLogger(__name__)
 
@@ -255,10 +252,28 @@ class SMSGateClient:
         """POST /config – update runtime config (e.g. webhook_url, poll_interval)."""
         return await self._post("/config", kwargs)
 
-    # USSD – live WebSocket
-    def ws_url_ussd_live(self) -> str:
-        """Return the WebSocket URL for /ussd/live (no auth header, network-secured)."""
-        return self._ws_url("/ussd/live")
+    # USSD – stateless live flow
+    async def ussd_live_start(self, code: str) -> dict[str, Any]:
+        """
+        POST /api/ussd/send – start a live USSD session without WebSocket affinity.
+
+        Response shape::
+
+            {"content":"...", "status":1, "session_active": true}
+        """
+        return await self._post("/api/ussd/send", {"code": code})
+
+    async def ussd_live_reply(self, text: str) -> dict[str, Any]:
+        """
+        POST /api/ussd/reply – send a follow-up menu input.
+        """
+        return await self._post("/api/ussd/reply", {"text": text})
+
+    async def ussd_live_cancel(self) -> dict[str, Any]:
+        """
+        POST /api/ussd/cancel – terminate the modem-side USSD session.
+        """
+        return await self._post("/api/ussd/cancel")
 
     # ── Config ────────────────────────────────────────────────────────────────
 

@@ -18,6 +18,13 @@ Optional variables (with defaults)
   OUTBOUND_PROXY_URL        (empty) Legacy Telegram outbound proxy URL.
   TELEGRAM_PROXY_URL        (empty) Preferred Telegram outbound proxy URL.
                             Falls back to OUTBOUND_PROXY_URL when unset.
+  TELEGRAM_UPDATE_MODE      polling | webhook (default: polling)
+  TELEGRAM_WEBHOOK_PUBLIC_URL
+                            (empty) Public HTTPS origin, e.g. https://bot.example.com
+                            Required only when TELEGRAM_UPDATE_MODE=webhook.
+  TELEGRAM_WEBHOOK_PATH     /telegram/webhook
+  TELEGRAM_WEBHOOK_SECRET   (empty) Optional secret validated from
+                            X-Telegram-Bot-Api-Secret-Token header.
   GATEWAY_PROXY_URL         (empty) Optional proxy URL for SMSGate HTTP calls.
                             Keep empty when SMSGate is on Docker/internal networks.
                             For SOCKS, prefer socks5h://... so DNS resolves via proxy.
@@ -86,6 +93,10 @@ class Settings:
     smsgate_webhook_url: str
     outbound_proxy_url: str
     telegram_proxy_url: str
+    telegram_update_mode: str
+    telegram_webhook_public_url: str
+    telegram_webhook_path: str
+    telegram_webhook_secret: str
     gateway_proxy_url: str
     gateway_timeout_seconds: float
 
@@ -101,6 +112,8 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> "Settings":
+        raw_webhook_path = os.getenv("TELEGRAM_WEBHOOK_PATH", "/telegram/webhook").strip()
+        normalized_webhook_path = "/" + (raw_webhook_path.strip("/") or "telegram/webhook")
         return cls(
             telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN", ""),
             allowed_telegram_user_ids=_parse_int_csv("ALLOWED_TELEGRAM_USER_IDS", ""),
@@ -112,6 +125,14 @@ class Settings:
             outbound_proxy_url=os.getenv("OUTBOUND_PROXY_URL", "").strip(),
             telegram_proxy_url=os.getenv("TELEGRAM_PROXY_URL", "").strip()
             or os.getenv("OUTBOUND_PROXY_URL", "").strip(),
+            telegram_update_mode=os.getenv("TELEGRAM_UPDATE_MODE", "polling")
+            .strip()
+            .lower(),
+            telegram_webhook_public_url=os.getenv(
+                "TELEGRAM_WEBHOOK_PUBLIC_URL", ""
+            ).strip(),
+            telegram_webhook_path=normalized_webhook_path,
+            telegram_webhook_secret=os.getenv("TELEGRAM_WEBHOOK_SECRET", "").strip(),
             gateway_proxy_url=os.getenv("GATEWAY_PROXY_URL", "").strip(),
             gateway_timeout_seconds=float(
                 max(5, _parse_int("GATEWAY_TIMEOUT_SECONDS", 30))
@@ -136,3 +157,21 @@ class Settings:
             raise ValueError(
                 f"Missing required environment variables: {', '.join(missing)}"
             )
+        if self.telegram_update_mode not in {"polling", "webhook"}:
+            raise ValueError(
+                "TELEGRAM_UPDATE_MODE must be either 'polling' or 'webhook'"
+            )
+        if self.telegram_update_mode == "webhook":
+            if not self.telegram_webhook_public_url:
+                raise ValueError(
+                    "TELEGRAM_WEBHOOK_PUBLIC_URL is required when TELEGRAM_UPDATE_MODE=webhook"
+                )
+            if not (
+                self.telegram_webhook_public_url.startswith("https://")
+                or self.telegram_webhook_public_url.startswith("http://localhost")
+                or self.telegram_webhook_public_url.startswith("http://127.0.0.1")
+            ):
+                raise ValueError(
+                    "TELEGRAM_WEBHOOK_PUBLIC_URL must be https://... "
+                    "(localhost/http allowed for local testing)"
+                )

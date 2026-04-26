@@ -12,8 +12,8 @@ Startup sequence
 4. Inject SMSGateClient into bot_data.
 5. Optionally register the bot's webhook URL with SMSGate
    (if SMSGATE_WEBHOOK_URL is set in the environment).
-6. Start the aiohttp webhook listener concurrently.
-7. Run Telegram polling until interrupted.
+6. Start the aiohttp inbound webhook listener (SMSGate and optionally Telegram).
+7. Run Telegram polling or webhook mode until interrupted.
 8. Clean up.
 """
 
@@ -111,6 +111,10 @@ def _build_telegram_application(
     return builder.build()
 
 
+def _join_webhook_url(public_url: str, path: str) -> str:
+    return public_url.rstrip("/") + "/" + path.strip("/")
+
+
 # ── Application builder ───────────────────────────────────────────────────────
 
 
@@ -184,6 +188,15 @@ async def _async_main(settings: Settings) -> None:
     log = logging.getLogger(__name__)
 
     tg_app = build_application(settings)
+    telegram_mode = settings.telegram_update_mode
+    telegram_webhook_url = (
+        _join_webhook_url(
+            settings.telegram_webhook_public_url,
+            settings.telegram_webhook_path,
+        )
+        if telegram_mode == "webhook"
+        else ""
+    )
 
     # ── Optionally register webhook URL with SMSGate ──────────────────────────
     if settings.smsgate_webhook_url:
@@ -201,25 +214,44 @@ async def _async_main(settings: Settings) -> None:
         notify_delivery_reports=settings.notify_delivery_reports,
         host=settings.webhook_host,
         port=settings.webhook_port,
+        telegram_process_update=tg_app.process_update if telegram_mode == "webhook" else None,
+        telegram_webhook_path=(
+            settings.telegram_webhook_path if telegram_mode == "webhook" else None
+        ),
+        telegram_webhook_secret=settings.telegram_webhook_secret,
     )
 
     log.info(
-        "SMSGate base URL: %s  |  webhook listener: %s:%s",
+        "SMSGate base URL: %s  |  webhook listener: %s:%s  |  telegram mode: %s",
         settings.smsgate_base_url,
         settings.webhook_host,
         settings.webhook_port,
+        telegram_mode,
     )
+    if telegram_mode == "webhook":
+        log.info("Telegram webhook target: %s", telegram_webhook_url)
 
     initialized = False
     started = False
     polling_started = False
+    webhook_registered = False
     try:
         await tg_app.initialize()
         initialized = True
         await tg_app.start()
         started = True
-        await tg_app.updater.start_polling(drop_pending_updates=True)  # type: ignore[union-attr]
-        polling_started = True
+        if telegram_mode == "webhook":
+            await tg_app.bot.set_webhook(
+                url=telegram_webhook_url,
+                secret_token=settings.telegram_webhook_secret or None,
+                drop_pending_updates=True,
+            )
+            webhook_registered = True
+            log.info("Telegram webhook registered")
+        else:
+            await tg_app.bot.delete_webhook(drop_pending_updates=True)
+            await tg_app.updater.start_polling(drop_pending_updates=True)  # type: ignore[union-attr]
+            polling_started = True
 
         stop_event = asyncio.Event()
 
@@ -239,6 +271,12 @@ async def _async_main(settings: Settings) -> None:
     finally:
         if polling_started and tg_app.updater and tg_app.updater.running:
             await tg_app.updater.stop()
+        if webhook_registered:
+            try:
+                await tg_app.bot.delete_webhook(drop_pending_updates=False)
+                log.info("Telegram webhook deleted")
+            except Exception as exc:
+                log.warning("Failed to delete Telegram webhook: %s", exc)
         if started:
             await tg_app.stop()
         if initialized:

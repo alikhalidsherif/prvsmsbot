@@ -14,10 +14,10 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from aiohttp import web
-from telegram import Bot
+from telegram import Bot, Update
 
 from .categories import MessageCategoryRules, classify_origin, normalize_sender
 
@@ -81,7 +81,7 @@ async def _notify_all(
 # ── Request handler ───────────────────────────────────────────────────────────
 
 
-async def _handle_webhook(request: web.Request) -> web.Response:
+async def _handle_smsgate_webhook(request: web.Request) -> web.Response:
     bot: Bot = request.app["bot"]
     user_ids: tuple[int, ...] = request.app["user_ids"]
     notify_dr: bool = request.app["notify_delivery_reports"]
@@ -119,6 +119,40 @@ async def _handle_webhook(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
+async def _handle_telegram_webhook(request: web.Request) -> web.Response:
+    bot: Bot = request.app["bot"]
+    process_update = request.app["telegram_process_update"]
+    expected_secret = request.app["telegram_webhook_secret"]
+
+    if expected_secret:
+        got_secret = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+        if got_secret != expected_secret:
+            log.warning("Rejected Telegram webhook request with invalid secret token")
+            return web.json_response({"ok": False, "error": "unauthorized"}, status=401)
+
+    try:
+        payload = await request.json()
+    except Exception:
+        log.warning("Telegram webhook received non-JSON body")
+        return web.json_response({"ok": False, "error": "bad json"}, status=400)
+
+    if not isinstance(payload, dict):
+        return web.json_response(
+            {"ok": False, "error": "json object required"}, status=400
+        )
+
+    try:
+        update = Update.de_json(payload, bot)
+        if update is None:
+            return web.json_response({"ok": True})
+        await process_update(update)
+    except Exception as exc:
+        log.exception("Failed to process Telegram webhook update: %s", exc)
+        return web.json_response({"ok": False, "error": "processing failed"}, status=500)
+
+    return web.json_response({"ok": True})
+
+
 # ── App factory ───────────────────────────────────────────────────────────────
 
 
@@ -127,12 +161,19 @@ def build_webhook_app(
     bot: Bot,
     user_ids: tuple[int, ...],
     notify_delivery_reports: bool,
+    telegram_process_update: Callable[[Update], Awaitable[None]] | None = None,
+    telegram_webhook_path: str | None = None,
+    telegram_webhook_secret: str = "",
 ) -> web.Application:
     app = web.Application()
     app["bot"] = bot
     app["user_ids"] = user_ids
     app["notify_delivery_reports"] = notify_delivery_reports
-    app.router.add_post("/webhook", _handle_webhook)
+    app["telegram_process_update"] = telegram_process_update
+    app["telegram_webhook_secret"] = telegram_webhook_secret
+    app.router.add_post("/webhook", _handle_smsgate_webhook)
+    if telegram_process_update and telegram_webhook_path:
+        app.router.add_post(telegram_webhook_path, _handle_telegram_webhook)
     return app
 
 
@@ -146,15 +187,29 @@ async def start_webhook_server(
     notify_delivery_reports: bool,
     host: str,
     port: int,
+    telegram_process_update: Callable[[Update], Awaitable[None]] | None = None,
+    telegram_webhook_path: str | None = None,
+    telegram_webhook_secret: str = "",
 ) -> web.AppRunner:
     app = build_webhook_app(
         bot=bot,
         user_ids=user_ids,
         notify_delivery_reports=notify_delivery_reports,
+        telegram_process_update=telegram_process_update,
+        telegram_webhook_path=telegram_webhook_path,
+        telegram_webhook_secret=telegram_webhook_secret,
     )
     runner = web.AppRunner(app, access_log=None)
     await runner.setup()
     site = web.TCPSite(runner, host, port)
     await site.start()
-    log.info("Webhook listener started on %s:%s (POST /webhook)", host, port)
+    if telegram_process_update and telegram_webhook_path:
+        log.info(
+            "Webhook listener started on %s:%s (POST /webhook, POST %s)",
+            host,
+            port,
+            telegram_webhook_path,
+        )
+    else:
+        log.info("Webhook listener started on %s:%s (POST /webhook)", host, port)
     return runner

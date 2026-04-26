@@ -24,8 +24,6 @@ import re
 from datetime import datetime
 from typing import Any
 
-import websockets
-import websockets.exceptions
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
@@ -584,132 +582,60 @@ async def cmd_ussdlive(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     input_queue: asyncio.Queue[str | None] = asyncio.Queue()
     context.chat_data[_USSD_QUEUE_KEY] = input_queue  # type: ignore[union-attr]
 
-    ws_url = _gw(context).ws_url_ussd_live()
-
-    async def _run_ws() -> None:
+    async def _run_session() -> None:
         try:
-            async with websockets.connect(  # type: ignore[attr-defined]
-                ws_url,
-                open_timeout=10,
-                ping_interval=25,
-                ping_timeout=10,
-            ) as ws:
-                # ── handshake ────────────────────────────────────────────────
-                raw_msg = await asyncio.wait_for(ws.recv(), timeout=10)
-                srv = json.loads(raw_msg)
-                if srv.get("status") == "busy":
+            gw = _gw(context)
+            start = await gw.ussd_live_start(code)
+            menu = str(start.get("content") or "").strip() or "(empty response)"
+
+            await context.bot.send_message(
+                chat_id,
+                f"[USSD] Live session started: {code}\n"
+                "Send your menu choice as a message. /ussdcancel to stop.",
+            )
+            await context.bot.send_message(chat_id, f"[USSD] {menu}")
+
+            if not bool(start.get("session_active", False)):
+                await context.bot.send_message(chat_id, "[USSD] Session ended.")
+                return
+
+            while True:
+                try:
+                    user_input = await asyncio.wait_for(input_queue.get(), timeout=120)
+                except asyncio.TimeoutError:
+                    await gw.ussd_live_cancel()
                     await context.bot.send_message(
                         chat_id,
-                        "⚠️ Modem is busy with another USSD session – try again shortly.",
+                        "No input for 2 minutes - session cancelled.",
                     )
-                    return
-                if srv.get("status") != "ready":
-                    await context.bot.send_message(
-                        chat_id, f"⚠️ Unexpected handshake message: {srv}"
-                    )
-                    return
+                    break
 
-                # ── start session ────────────────────────────────────────────
-                await ws.send(json.dumps({"code": code}))
-                await context.bot.send_message(
-                    chat_id,
-                    f"📟 Live session started: {code}\n"
-                    "Send your menu choice as a message. /ussdcancel to stop.",
-                )
+                if user_input is None:  # /ussdcancel sentinel
+                    await gw.ussd_live_cancel()
+                    await context.bot.send_message(chat_id, "[USSD] Session cancelled.")
+                    break
 
-                # ── read / respond loop ───────────────────────────────────────
-                while True:
-                    try:
-                        raw_msg = await asyncio.wait_for(ws.recv(), timeout=130)
-                    except asyncio.TimeoutError:
-                        await context.bot.send_message(
-                            chat_id, "⏱ No response from modem – session timed out."
-                        )
-                        break
-                    except websockets.exceptions.ConnectionClosedOK:
-                        await context.bot.send_message(chat_id, "📟 Session ended.")
-                        break
-                    except websockets.exceptions.ConnectionClosed as exc:
-                        await context.bot.send_message(
-                            chat_id,
-                            f"⚠️ Connection dropped (code {exc.code}).",
-                        )
-                        break
+                resp = await gw.ussd_live_reply(str(user_input))
+                content = str(resp.get("content") or "").strip() or "(empty response)"
+                await context.bot.send_message(chat_id, f"[USSD] {content}")
 
-                    srv = json.loads(raw_msg)
+                if not bool(resp.get("session_active", False)):
+                    await context.bot.send_message(chat_id, "[USSD] Session ended.")
+                    break
 
-                    if "menu" in srv:
-                        await context.bot.send_message(chat_id, f"📟 {srv['menu']}")
-
-                        # Wait for the user's next input (or cancel sentinel)
-                        try:
-                            user_input = await asyncio.wait_for(
-                                input_queue.get(), timeout=120
-                            )
-                        except asyncio.TimeoutError:
-                            await context.bot.send_message(
-                                chat_id,
-                                "⏱ No input for 2 minutes – session cancelled.",
-                            )
-                            try:
-                                await ws.send(json.dumps({"action": "cancel"}))
-                            except Exception:
-                                pass
-                            break
-
-                        if user_input is None:  # /ussdcancel sentinel
-                            try:
-                                await ws.send(json.dumps({"action": "cancel"}))
-                            except Exception:
-                                pass
-                            await context.bot.send_message(
-                                chat_id, "📟 Session cancelled."
-                            )
-                            break
-
-                        try:
-                            await ws.send(json.dumps({"input": user_input}))
-                        except websockets.exceptions.ConnectionClosedOK:
-                            await context.bot.send_message(chat_id, "📟 Session ended.")
-                            break
-                        except websockets.exceptions.ConnectionClosed as exc:
-                            await context.bot.send_message(
-                                chat_id, f"⚠️ Connection dropped (code {exc.code})."
-                            )
-                            break
-
-                    elif srv.get("status") == "cancelled":
-                        await context.bot.send_message(chat_id, "📟 Session cancelled.")
-                        break
-                    elif srv.get("status") == "timeout":
-                        await context.bot.send_message(
-                            chat_id,
-                            f"⏱ {srv.get('error', 'Session timed out on the modem side.')}",
-                        )
-                        break
-                    elif "error" in srv:
-                        await context.bot.send_message(
-                            chat_id, f"⚠️ USSD error: {srv['error']}"
-                        )
-                        break
-                    elif srv.get("status") == "pong":
-                        pass  # keepalive – ignore
-
-        except websockets.exceptions.ConnectionClosedOK:
-            await context.bot.send_message(chat_id, "📟 Session ended.")
-        except websockets.exceptions.ConnectionClosed as exc:
-            log.warning("USSD live WS closed: %s", exc)
+        except GatewayBusy:
             await context.bot.send_message(
-                chat_id, f"⚠️ Connection closed unexpectedly (code {exc.code})."
+                chat_id,
+                "Modem is busy with another USSD session - try again shortly.",
             )
         except Exception as exc:
-            log.exception("USSD live WS error")
-            await context.bot.send_message(chat_id, f"⚠️ USSD error: {exc}")
+            log.exception("USSD live session error")
+            await context.bot.send_message(chat_id, f"USSD error: {exc}")
         finally:
             context.chat_data.pop(_USSD_TASK_KEY, None)  # type: ignore[union-attr]
             context.chat_data.pop(_USSD_QUEUE_KEY, None)  # type: ignore[union-attr]
 
-    task = asyncio.create_task(_run_ws())
+    task = asyncio.create_task(_run_session())
     context.chat_data[_USSD_TASK_KEY] = task  # type: ignore[union-attr]
 
 
@@ -721,17 +647,17 @@ async def cmd_ussdcancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     queue: asyncio.Queue | None = context.chat_data.get(_USSD_QUEUE_KEY)  # type: ignore[union-attr]
 
     if task is None or task.done():
-        await update.effective_message.reply_text("No active live USSD session.")  # type: ignore[union-attr]
+        try:
+            await _gw(context).ussd_live_cancel()
+            await update.effective_message.reply_text("No local session. Cleared modem USSD state.")  # type: ignore[union-attr]
+        except Exception:
+            await update.effective_message.reply_text("No active live USSD session.")  # type: ignore[union-attr]
         return
 
     if queue is not None:
-        await queue.put(None)  # sentinel → _run_ws cancels cleanly
+        await queue.put(None)  # sentinel -> task cancels cleanly
 
-    await update.effective_message.reply_text("Cancelling…")  # type: ignore[union-attr]
-
-
-# ── /unread ───────────────────────────────────────────────────────────────────
-
+    await update.effective_message.reply_text("Cancelling...")  # type: ignore[union-attr]
 
 async def cmd_unread(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
