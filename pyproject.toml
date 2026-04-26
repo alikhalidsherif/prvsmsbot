@@ -13,16 +13,11 @@ authors = [
   { name = "prvsmsbot contributors" }
 ]
 dependencies = [
-  # Telegram bot framework (async, v20+)
-  "python-telegram-bot>=21.7",
-  # Async HTTP client for SMSGate REST calls
-  "httpx>=0.27.0",
-  # Async WebSocket client for /ussd/live
+  "python-telegram-bot[socks]>=21.7",
+  "httpx[socks]>=0.27.0",
   "websockets>=12.0",
-  # Async HTTP server for the inbound SMSGate webhook
   "aiohttp>=3.9.0",
 ]
-
 [project.optional-dependencies]
 dev = [
   "pytest>=8.0.0",

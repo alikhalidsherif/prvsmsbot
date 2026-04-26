@@ -13,6 +13,8 @@ services:
     networks:
       - smsgate-net
       - kanz_net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test:
         - "CMD-SHELL"
